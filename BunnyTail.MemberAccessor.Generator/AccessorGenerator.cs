@@ -104,7 +104,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         return new EquatableArray<Result<ClosedGenericModel>>(list.ToArray());
 
-        bool Predicate(AttributeData attributeData) =>
+        static bool Predicate(AttributeData attributeData) =>
             attributeData.AttributeClass?.ToDisplayString() == TypedAccessorAttributeName;
     }
 
