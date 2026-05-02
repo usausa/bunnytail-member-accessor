@@ -213,37 +213,61 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
+        // getter dict
+        BeginDictionary(builder, "Getter", "global::System.Func<" + className + ", object?>");
+        for (var i = 0; i < readableProperties.Length; i++)
+        {
+            var property = readableProperties[i];
+            builder
+                .Indent()
+                .Append("{ \"")
+                .Append(property.Name)
+                .Append("\", static x => x.")
+                .Append(property.Name)
+                .Append(" }")
+                .AppendIf(i < readableProperties.Length - 1, ",")
+                .NewLine();
+        }
+        EndDictionary(builder);
+
+        builder.NewLine();
+
+        // setter dict
+        BeginDictionary(builder, "Setter", "global::System.Action<" + className + ", object?>");
+        for (var i = 0; i < writableProperties.Length; i++)
+        {
+            var property = writableProperties[i];
+            builder
+                .Indent()
+                .Append("{ \"")
+                .Append(property.Name)
+                .Append("\", static (x, v) => x.")
+                .Append(property.Name)
+                .Append(" = (")
+                .Append(property.Type)
+                .Append(")v! }")
+                .AppendIf(i < writableProperties.Length - 1, ",")
+                .NewLine();
+        }
+        EndDictionary(builder);
+
+        builder.NewLine();
+
         // get
         builder.Indent()
             .Append("public object? GetValue(object obj, string name)")
             .NewLine();
         builder.BeginScope();
-
         builder
             .Indent()
-            .Append("switch (name)")
+            .Append("if (Getter.TryGetValue(name, out var fn)) return fn(global::System.Runtime.CompilerServices.Unsafe.As<")
+            .Append(className)
+            .Append(">(obj));")
             .NewLine();
-        builder.BeginScope();
-        foreach (var property in readableProperties)
-        {
-            builder
-                .Indent()
-                .Append("case \"")
-                .Append(property.Name)
-                .Append("\": return ((")
-                .Append(className)
-                .Append(")obj).")
-                .Append(property.Name)
-                .Append(";")
-                .NewLine();
-        }
-        builder.EndScope();
-
         builder
             .Indent()
-            .Append("throw new ArgumentException(\"Readable property not found.\", nameof(name));")
+            .Append("throw new global::System.ArgumentException(\"Readable property not found.\", nameof(name));")
             .NewLine();
-
         builder.EndScope();
 
         builder.NewLine();
@@ -253,34 +277,16 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("public void SetValue(object obj, string name, object? value)")
             .NewLine();
         builder.BeginScope();
-
         builder
             .Indent()
-            .Append("switch (name)")
+            .Append("if (Setter.TryGetValue(name, out var fn)) { fn(global::System.Runtime.CompilerServices.Unsafe.As<")
+            .Append(className)
+            .Append(">(obj), value); return; }")
             .NewLine();
-        builder.BeginScope();
-        foreach (var property in writableProperties)
-        {
-            builder
-                .Indent()
-                .Append("case \"")
-                .Append(property.Name)
-                .Append("\": ((")
-                .Append(className)
-                .Append(")obj).")
-                .Append(property.Name)
-                .Append(" = (")
-                .Append(property.Type)
-                .Append(")value!; return;")
-                .NewLine();
-        }
-        builder.EndScope();
-
         builder
             .Indent()
-            .Append("throw new ArgumentException(\"Writable property not found.\", nameof(name));")
+            .Append("throw new global::System.ArgumentException(\"Writable property not found.\", nameof(name));")
             .NewLine();
-
         builder.EndScope();
 
         builder.EndScope();
