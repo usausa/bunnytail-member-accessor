@@ -1,4 +1,3 @@
-#pragma warning disable CA1815
 namespace BunnyTail.MemberAccessor;
 
 [GenerateAccessor]
@@ -36,7 +35,7 @@ public class MultiGenericData<T1, T2>
 
 // Struct support
 [GenerateAccessor]
-public struct StructData
+public record struct StructData
 {
     public int Id { get; set; }
 
@@ -72,6 +71,31 @@ public class CtorData2
     }
 }
 
+// Same-arity constructor overload test data
+[GenerateAccessor]
+public class OverloadCtorData
+{
+    public int IntValue { get; }
+
+    public string? StringValue { get; }
+
+    public OverloadCtorData(int intValue) => IntValue = intValue;
+
+    public OverloadCtorData(string stringValue) => StringValue = stringValue;
+}
+
+// Generic constructor accessor test data
+[GenerateAccessor]
+[TypedAccessor(typeof(GenericHolder<int>))]
+public class GenericHolder<T>
+{
+    public T Value { get; }
+
+    public GenericHolder() => Value = default!;
+
+    public GenericHolder(T value) => Value = value;
+}
+
 // Inherited properties test data
 [GenerateAccessor]
 public class BaseData
@@ -83,4 +107,21 @@ public class BaseData
 public class DerivedData : BaseData
 {
     public string Name { get; set; } = default!;
+}
+
+// Property collection filtering test data (public instance properties only)
+[GenerateAccessor]
+public class FilterData
+{
+    public int Value { get; set; }
+
+    public int ReadOnly { get; }
+
+    public int ReadPublicWritePrivate { get; private set; }
+
+    public static int Shared { get; set; }
+
+    internal int Internal { get; set; }
+
+    public int this[int index] => index;
 }

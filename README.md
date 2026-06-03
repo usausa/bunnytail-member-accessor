@@ -9,16 +9,17 @@ AOT-safe source-generated member accessor for .NET. A reflection-free alternativ
 | Feature | Supported | Notes |
 | --- | :---: | --- |
 | `class` | ✅ | Full support |
-| `struct` | ✅ | Boxed instance required for `IAccessor.SetValue` |
+| `struct` | ✅ | Boxed instance required for `IAccessor.SetValue`; typed `CreateSetter<T>` returns `null` (see Struct Support) |
 | `record` (class) | ✅ | Treated as class |
 | `record struct` | ✅ | Treated as struct |
 | Open generic (`Foo<T>`) | ✅ | On-demand closed-type instantiation |
 | Closed generic pre-registration | ✅ | `[TypedAccessor(typeof(Foo<int>))]` |
 | Inherited properties | ✅ | Flattened from base classes |
-| Public instance properties | ✅ | Read/write |
+| Public instance properties | ✅ | Read/write; `static`, non-public and indexers are ignored |
 | Read-only properties | ✅ | Setter returns `null` |
-| Constructor accessor | ✅ | Arity 0–4; AOT-safe |
-| `IAccessorFactory.Members` | ✅ | `IReadOnlyList<MemberDescriptor>` |
+| Constructor accessor | ✅ | Arity 0–4; AOT-safe; generic types supported |
+| Same-arity constructor overloads | ✅ | Resolved by argument type at runtime (see Constructor Accessor) |
+| `IAccessorFactory.Members` | ✅ | `IReadOnlyList<MemberDescriptor>` (public instance properties only) |
 | `static` members | ❌ | Not yet supported |
 | Non-public members | ❌ | Public only |
 | Fields | ❌ | Properties only |
@@ -80,6 +81,26 @@ var instance = ctor.Create();          // parameterless
 var instance2 = ctor.Create<int>(42); // 1-arg constructor
 ```
 
+Constructor accessors are available for generic types as well (closed types are pre-registered
+with `[TypedAccessor]`, others are created on demand):
+
+```csharp
+var ctor = AccessorRegistry.FindConstructor<GenericHolder<int>>();
+var instance = ctor.Create<int>(42);
+```
+
+When a type declares multiple constructors with the **same arity**, the matching constructor is
+selected at runtime by the argument type. Pass the exact parameter type as the type argument:
+
+```csharp
+// class Sample { Sample(int v); Sample(string v); }
+var ctor = AccessorRegistry.FindConstructor<Sample>();
+var a = ctor.Create(42);      // -> Sample(int)
+var b = ctor.Create("text");  // -> Sample(string)
+```
+
+If no constructor matches the supplied argument type, `NotSupportedException` is thrown.
+
 ### Struct Support
 
 ```csharp
@@ -90,6 +111,10 @@ var accessor = AccessorRegistry.FindAccessor<Point>();
 object boxed = new Point { X = 1, Y = 2 };
 accessor.SetValue(boxed, "X", 10); // modifies boxed instance
 ```
+
+> **Note:** For value types, the typed `IAccessorFactory<T>.CreateSetter<TProperty>` returns `null`,
+> because a `delegate void(T, TProperty)` would receive a copy of the struct and could not mutate the
+> caller's value. Use `IAccessor.SetValue` with a boxed instance to modify a struct.
 
 ## Benchmark
 

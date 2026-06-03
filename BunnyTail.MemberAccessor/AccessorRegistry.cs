@@ -1,17 +1,19 @@
 namespace BunnyTail.MemberAccessor;
 
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 
 public static class AccessorRegistry
 {
     // Closed-type registrations (non-generic or pre-registered closed generics)
-    private static readonly Dictionary<Type, IAccessor> AccessorInstances = [];
-    private static readonly Dictionary<Type, IAccessorFactory> FactoryInstances = [];
-    private static readonly Dictionary<Type, object> ConstructorInstances = [];
+    private static readonly ConcurrentDictionary<Type, IAccessor> AccessorInstances = new();
+    private static readonly ConcurrentDictionary<Type, IAccessorFactory> FactoryInstances = new();
+    private static readonly ConcurrentDictionary<Type, object> ConstructorInstances = new();
 
     // Open-generic type registrations (for on-demand closed-type instantiation)
-    private static readonly Dictionary<Type, Func<Type[], IAccessor>> OpenAccessorFactories = [];
-    private static readonly Dictionary<Type, Func<Type[], IAccessorFactory>> OpenFactoryFactories = [];
+    private static readonly ConcurrentDictionary<Type, Func<Type[], IAccessor>> OpenAccessorFactories = new();
+    private static readonly ConcurrentDictionary<Type, Func<Type[], IAccessorFactory>> OpenFactoryFactories = new();
+    private static readonly ConcurrentDictionary<Type, Func<Type[], object>> OpenConstructorFactories = new();
 
     // ------------------------------------------------------------
     // Registration (called from [ModuleInitializer])
@@ -40,6 +42,16 @@ public static class AccessorRegistry
     {
         OpenAccessorFactories[openType] = accessorFactory;
         OpenFactoryFactories[openType] = factoryFactory;
+    }
+
+    // Registers an open-generic constructor accessor factory that produces a closed instance on demand.
+    [RequiresDynamicCode("Open generic type registration requires dynamic code (MakeGenericType).")]
+    [RequiresUnreferencedCode("Open generic type registration may not be compatible with trimming.")]
+    public static void RegisterOpenGenericConstructorFactory(
+        Type openType,
+        Func<Type[], object> constructorFactory)
+    {
+        OpenConstructorFactories[openType] = constructorFactory;
     }
 
     // ------------------------------------------------------------
@@ -80,15 +92,7 @@ public static class AccessorRegistry
     }
 
     // Finds an <see cref="IAccessor"/> for the specified type.
-    public static IAccessor? FindAccessor(Type type)
-    {
-        if (AccessorInstances.TryGetValue(type, out var accessor))
-        {
-            return accessor;
-        }
-
-        return FindAccessorCore(type);
-    }
+    public static IAccessor? FindAccessor(Type type) => FindAccessorCore(type);
 
     private static IAccessor? FindAccessorCore(Type type)
     {
@@ -108,9 +112,7 @@ public static class AccessorRegistry
             return null;
         }
 
-        var instance = factory(type.GenericTypeArguments);
-        AccessorInstances[type] = instance;
-        return instance;
+        return AccessorInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), factory);
     }
 
     // Finds an <see cref="IAccessorFactory{T}"/> for the specified type.
@@ -147,19 +149,30 @@ public static class AccessorRegistry
             return null;
         }
 
-        var instance = openFactory(type.GenericTypeArguments);
-        FactoryInstances[type] = instance;
-        return instance;
+        return FactoryInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), openFactory);
     }
 
     // Finds an <see cref="IConstructorAccessor{T}"/> for the specified type.
     public static IConstructorAccessor<T>? FindConstructor<T>()
     {
-        if (ConstructorInstances.TryGetValue(typeof(T), out var ctor))
+        var type = typeof(T);
+        if (ConstructorInstances.TryGetValue(type, out var ctor))
         {
             return (IConstructorAccessor<T>)ctor;
         }
 
-        return null;
+        if (!type.IsGenericType)
+        {
+            return null;
+        }
+
+        var openType = type.GetGenericTypeDefinition();
+        if (!OpenConstructorFactories.TryGetValue(openType, out var factory))
+        {
+            return null;
+        }
+
+        var instance = ConstructorInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), factory);
+        return (IConstructorAccessor<T>)instance;
     }
 }

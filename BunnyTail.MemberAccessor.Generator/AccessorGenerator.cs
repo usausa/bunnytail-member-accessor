@@ -1,6 +1,7 @@
 namespace BunnyTail.MemberAccessor.Generator;
 
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 
@@ -62,7 +63,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             ? string.Empty
             : symbol.ContainingNamespace.ToDisplayString();
 
-        // Collect properties including inherited ones
+        // Collect public instance properties including inherited ones
         var allProperties = new List<IPropertySymbol>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var current = symbol;
@@ -70,6 +71,17 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             foreach (var member in current.GetMembers().OfType<IPropertySymbol>())
             {
+                // Public instance properties only (exclude static members, indexers, and properties with no public accessor)
+                if (member.IsStatic || member.IsIndexer)
+                {
+                    continue;
+                }
+
+                if (!CanAccess(member.GetMethod) && !CanAccess(member.SetMethod))
+                {
+                    continue;
+                }
+
                 if (seen.Add(member.Name))
                 {
                     allProperties.Add(member);
@@ -184,10 +196,10 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var targetTypes = types.SelectValue().ToList();
         var closedTypes = closedGenerics.SelectMany(static x => x.SelectValue()).ToList();
 
-        // BTMA0003: no accessible properties
+        // BTMA0003: no readable or writable properties
         foreach (var type in targetTypes)
         {
-            if (type.Properties.Count == 0)
+            if (!type.Properties.Any(static x => x.CanRead || x.CanWrite))
             {
                 // We can't recover a location here easily; emit at null location
                 context.ReportDiagnostic(Diagnostic.Create(
@@ -494,21 +506,30 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append(", TProperty>? CreateSetter<TProperty>(string name)")
             .NewLine();
         builder.BeginScope();
-        builder.Indent().Append("return name switch").NewLine();
-        builder.BeginScope();
-        foreach (var property in writableProperties)
+        if (type.IsValueType)
         {
-            builder.Indent()
-                .Append("\"").Append(property.Name).Append("\" => (global::System.Action<")
-                .Append(className).Append(", TProperty>?)(object?)(global::System.Action<")
-                .Append(className).Append(", ").Append(property.Type)
-                .Append(">)(static (").Append(className).Append(" x, ").Append(property.Type)
-                .Append(" v) => x.").Append(property.Name).Append(" = v!),")
-                .NewLine();
+            // Typed setters cannot mutate value types (the delegate would receive a copy);
+            // use IAccessor.SetValue with a boxed instance instead.
+            builder.Indent().Append("return null;").NewLine();
         }
-        builder.Indent().Append("_ => null").NewLine();
-        builder.IndentLevel--;
-        builder.Indent().Append("};").NewLine();
+        else
+        {
+            builder.Indent().Append("return name switch").NewLine();
+            builder.BeginScope();
+            foreach (var property in writableProperties)
+            {
+                builder.Indent()
+                    .Append("\"").Append(property.Name).Append("\" => (global::System.Action<")
+                    .Append(className).Append(", TProperty>?)(object?)(global::System.Action<")
+                    .Append(className).Append(", ").Append(property.Type)
+                    .Append(">)(static (").Append(className).Append(" x, ").Append(property.Type)
+                    .Append(" v) => x.").Append(property.Name).Append(" = v!),")
+                    .NewLine();
+            }
+            builder.Indent().Append("_ => null").NewLine();
+            builder.IndentLevel--;
+            builder.Indent().Append("};").NewLine();
+        }
         builder.EndScope();
 
         builder.EndScope();
@@ -525,14 +546,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
-        // Collect by arity
+        // Group by arity; multiple constructors may share an arity and are disambiguated by argument type.
         var byArity = constructors.GroupBy(static c => c.Parameters.Count)
-            .ToDictionary(static g => g.Key, static g => g.First());
+            .ToDictionary(static g => g.Key, static g => g.ToArray());
 
         // Create() - 0 args
         builder.Indent().Append("public ").Append(className).Append(" Create()").NewLine();
         builder.BeginScope();
-        if (byArity.TryGetValue(0, out _))
+        if (byArity.ContainsKey(0))
         {
             builder.Indent().Append("return new ").Append(className).Append("();").NewLine();
         }
@@ -546,67 +567,95 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         // Create<TArg>(TArg arg) - 1 arg
         builder.Indent().Append("public ").Append(className).Append(" Create<TArg>(TArg arg)").NewLine();
         builder.BeginScope();
-        if (byArity.TryGetValue(1, out var ctor1))
-        {
-            var p = ctor1.Parameters[0];
-            builder.Indent().Append("return new ").Append(className).Append("((").Append(p.Type).Append(")(object)arg!);").NewLine();
-        }
-        else
-        {
-            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 1-parameter constructor.\");").NewLine();
-        }
+        BuildCreateBody(builder, className, byArity, 1);
         builder.EndScope();
         builder.NewLine();
 
         // Create<TArg1, TArg2>(TArg1 arg1, TArg2 arg2) - 2 args
         builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2>(TArg1 arg1, TArg2 arg2)").NewLine();
         builder.BeginScope();
-        if (byArity.TryGetValue(2, out var ctor2))
-        {
-            var parms = ctor2.Parameters;
-            builder.Indent().Append("return new ").Append(className)
-                .Append("((").Append(parms[0].Type).Append(")(object)arg1!, (").Append(parms[1].Type).Append(")(object)arg2!);").NewLine();
-        }
-        else
-        {
-            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 2-parameter constructor.\");").NewLine();
-        }
+        BuildCreateBody(builder, className, byArity, 2);
         builder.EndScope();
         builder.NewLine();
 
         // Create<TArg1, TArg2, TArg3>
         builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2, TArg3>(TArg1 arg1, TArg2 arg2, TArg3 arg3)").NewLine();
         builder.BeginScope();
-        if (byArity.TryGetValue(3, out var ctor3))
-        {
-            var parms = ctor3.Parameters;
-            builder.Indent().Append("return new ").Append(className)
-                .Append("((").Append(parms[0].Type).Append(")(object)arg1!, (").Append(parms[1].Type).Append(")(object)arg2!, (").Append(parms[2].Type).Append(")(object)arg3!);").NewLine();
-        }
-        else
-        {
-            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 3-parameter constructor.\");").NewLine();
-        }
+        BuildCreateBody(builder, className, byArity, 3);
         builder.EndScope();
         builder.NewLine();
 
         // Create<TArg1, TArg2, TArg3, TArg4>
         builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2, TArg3, TArg4>(TArg1 arg1, TArg2 arg2, TArg3 arg3, TArg4 arg4)").NewLine();
         builder.BeginScope();
-        if (byArity.TryGetValue(4, out var ctor4))
-        {
-            var parms = ctor4.Parameters;
-            builder.Indent().Append("return new ").Append(className)
-                .Append("((").Append(parms[0].Type).Append(")(object)arg1!, (").Append(parms[1].Type).Append(")(object)arg2!, (").Append(parms[2].Type).Append(")(object)arg3!, (").Append(parms[3].Type).Append(")(object)arg4!);").NewLine();
-        }
-        else
-        {
-            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 4-parameter constructor.\");").NewLine();
-        }
+        BuildCreateBody(builder, className, byArity, 4);
         builder.EndScope();
 
         builder.EndScope();
     }
+
+    private static void BuildCreateBody(SourceBuilder builder, string className, Dictionary<int, ConstructorModel[]> byArity, int arity)
+    {
+        if (!byArity.TryGetValue(arity, out var ctors))
+        {
+            builder.Indent()
+                .Append("throw new global::System.NotSupportedException(\"No ")
+                .Append(arity.ToString(CultureInfo.InvariantCulture))
+                .Append("-parameter constructor.\");")
+                .NewLine();
+            return;
+        }
+
+        // Single constructor for the arity: bind directly (preserves implicit-conversion behavior).
+        if (ctors.Length == 1)
+        {
+            BuildNewExpression(builder, className, ctors[0], arity);
+            return;
+        }
+
+        // Multiple constructors share the arity: select by exact argument type at runtime.
+        foreach (var ctor in ctors)
+        {
+            builder.Indent().Append("if (");
+            for (var i = 0; i < arity; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(" && ");
+                }
+                builder.Append("typeof(").Append(ArgTypeParameterName(arity, i)).Append(") == typeof(").Append(ctor.Parameters[i].Type).Append(')');
+            }
+            builder.Append(')').NewLine();
+            builder.BeginScope();
+            BuildNewExpression(builder, className, ctor, arity);
+            builder.EndScope();
+        }
+        builder.Indent()
+            .Append("throw new global::System.NotSupportedException(\"No matching ")
+            .Append(arity.ToString(CultureInfo.InvariantCulture))
+            .Append("-parameter constructor.\");")
+            .NewLine();
+    }
+
+    private static void BuildNewExpression(SourceBuilder builder, string className, ConstructorModel ctor, int arity)
+    {
+        builder.Indent().Append("return new ").Append(className).Append('(');
+        for (var i = 0; i < arity; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+            builder.Append('(').Append(ctor.Parameters[i].Type).Append(")(object)").Append(ArgName(arity, i)).Append('!');
+        }
+        builder.Append(");").NewLine();
+    }
+
+    private static string ArgTypeParameterName(int arity, int index) =>
+        arity == 1 ? "TArg" : $"TArg{index + 1}";
+
+    private static string ArgName(int arity, int index) =>
+        arity == 1 ? "arg" : $"arg{index + 1}";
 
     private static void BuildRegistrySource(SourceBuilder builder, List<TypeModel> types, List<ClosedGenericModel> closedTypes)
     {
@@ -691,6 +740,20 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                             .AppendBy(closedType, BuildRegistryFactoryName)
                             .Append("());")
                             .NewLine();
+
+                        if (type.Constructors.Count > 0)
+                        {
+                            builder
+                                .Indent()
+                                .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterConstructor<")
+                                .AppendBy(closedType, BuildRegistryTargetName)
+                                .Append(">(typeof(")
+                                .AppendBy(closedType, BuildRegistryTargetName)
+                                .Append("), new ")
+                                .AppendBy(closedType, BuildRegistryConstructorAccessorName)
+                                .Append("());")
+                                .NewLine();
+                        }
                     }
                 }
 
@@ -717,6 +780,26 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                     .Append(").MakeGenericType(typeArgs))!);")
                     .NewLine();
                 builder.IndentLevel--;
+
+                // Open-generic constructor accessor delegate for on-demand instantiation
+                if (type.Constructors.Count > 0)
+                {
+                    builder
+                        .Indent()
+                        .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterOpenGenericConstructorFactory(typeof(")
+                        .AppendBy(type, BuildRegistryOpenTargetName)
+                        .Append("),")
+                        .NewLine();
+                    builder.IndentLevel++;
+                    builder
+                        .Indent()
+                        .Append("static typeArgs => global::System.Activator.CreateInstance(")
+                        .Append("typeof(")
+                        .AppendBy(type, BuildRegistryConstructorAccessorOpenName)
+                        .Append(").MakeGenericType(typeArgs))!);")
+                        .NewLine();
+                    builder.IndentLevel--;
+                }
             }
         }
 
@@ -840,7 +923,24 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static void BuildRegistryConstructorAccessorName(SourceBuilder builder, TypeModel model)
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
-        builder.Append(model.ClassName).Append(ConstructorAccessorSuffix);
+
+        var index = model.ClassName.IndexOf('<');
+        if (index < 0)
+        {
+            builder.Append(model.ClassName).Append(ConstructorAccessorSuffix);
+        }
+        else
+        {
+            builder.Append(model.ClassName.Substring(0, index)).Append(ConstructorAccessorSuffix).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+        }
+    }
+
+    private static void BuildRegistryConstructorAccessorOpenName(SourceBuilder builder, TypeModel model)
+    {
+        builder.AppendBy(model.Namespace, BuildNamespace);
+        var index = model.ClassName.IndexOf('<');
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(ConstructorAccessorSuffix)
+               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
     }
 
     private static void BuildRegistryTargetName(SourceBuilder builder, ClosedGenericModel model)
@@ -864,6 +964,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         var index = model.ClassName.IndexOf('<');
         builder.Append(model.ClassName.Substring(0, index)).Append(AccessorFactorySuffix).Append(model.ClassName.Substring(index));
+    }
+
+    private static void BuildRegistryConstructorAccessorName(SourceBuilder builder, ClosedGenericModel model)
+    {
+        builder.AppendBy(model.Namespace, BuildNamespace);
+
+        var index = model.ClassName.IndexOf('<');
+        builder.Append(model.ClassName.Substring(0, index)).Append(ConstructorAccessorSuffix).Append(model.ClassName.Substring(index));
     }
 
     private static void BuildNamespace(SourceBuilder builder, string ns)

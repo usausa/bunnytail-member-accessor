@@ -59,4 +59,42 @@ public class MembersTest
 
         Assert.Equal(10, data.Id);
     }
+
+    [Fact]
+    public void TestPublicInstancePropertiesOnly()
+    {
+        var factory = AccessorRegistry.FindFactory<FilterData>();
+
+        Assert.NotNull(factory);
+
+        var members = factory.Members;
+
+        Assert.NotNull(members);
+
+        var names = members.Select(m => m.Name).ToArray();
+
+        // Included: public instance properties
+        Assert.Equal(3, members.Count);
+        Assert.Contains(nameof(FilterData.Value), names);
+        Assert.Contains(nameof(FilterData.ReadOnly), names);
+        Assert.Contains(nameof(FilterData.ReadPublicWritePrivate), names);
+
+        // Excluded: static, non-public, indexer
+        Assert.DoesNotContain("Shared", names);
+        Assert.DoesNotContain("Internal", names);
+        Assert.DoesNotContain("Item", names);
+
+        var value = members.First(m => m.Name == nameof(FilterData.Value));
+        Assert.True(value.CanRead);
+        Assert.True(value.CanWrite);
+
+        var readOnly = members.First(m => m.Name == nameof(FilterData.ReadOnly));
+        Assert.True(readOnly.CanRead);
+        Assert.False(readOnly.CanWrite);
+
+        // Public getter, non-public setter: only the public accessor counts.
+        var readPublicWritePrivate = members.First(m => m.Name == nameof(FilterData.ReadPublicWritePrivate));
+        Assert.True(readPublicWritePrivate.CanRead);
+        Assert.False(readPublicWritePrivate.CanWrite);
+    }
 }

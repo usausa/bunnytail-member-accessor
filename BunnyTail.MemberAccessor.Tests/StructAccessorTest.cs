@@ -30,4 +30,23 @@ public class StructAccessorTest
         Assert.Equal(99, ((StructData)boxed).Id);
         Assert.Equal("updated", ((StructData)boxed).Name);
     }
+
+    [Fact]
+    public void TestStructTypedSetterReturnsNull()
+    {
+        var factory = AccessorRegistry.FindFactory<StructData>();
+
+        Assert.NotNull(factory);
+
+        // Typed setters cannot mutate value types (the delegate receives a copy), so null is returned.
+        Assert.Null(factory.CreateSetter<int>(nameof(StructData.Id)));
+        Assert.Null(factory.CreateSetter<string>(nameof(StructData.Name)));
+
+        // Typed getter and the object-based setter (via boxed instance) still work.
+        var getId = factory.CreateGetter<int>(nameof(StructData.Id));
+        Assert.NotNull(getId);
+
+        var setId = factory.CreateSetter(nameof(StructData.Id));
+        Assert.NotNull(setId);
+    }
 }
