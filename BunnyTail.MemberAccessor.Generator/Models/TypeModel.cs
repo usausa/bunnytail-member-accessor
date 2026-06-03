@@ -6,4 +6,6 @@ internal sealed record TypeModel(
     string Namespace,
     string ClassName,
     int TypeArgumentCount,
-    EquatableArray<PropertyModel> Properties);
+    bool IsValueType,
+    EquatableArray<PropertyModel> Properties,
+    EquatableArray<ConstructorModel> Constructors);

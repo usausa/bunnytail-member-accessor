@@ -20,6 +20,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private const string AccessorSuffix = "_Accessor";
     private const string AccessorFactorySuffix = "_AccessorFactory";
+    private const string ConstructorAccessorSuffix = "_ConstructorAccessor";
 
     // ------------------------------------------------------------
     // Initialize
@@ -51,7 +52,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     // ------------------------------------------------------------
 
     private static bool IsTypeSyntax(SyntaxNode syntax) =>
-        syntax is ClassDeclarationSyntax;
+        syntax is ClassDeclarationSyntax or StructDeclarationSyntax or RecordDeclarationSyntax;
 
     private static Result<TypeModel> GetTypeModel(GeneratorAttributeSyntaxContext context)
     {
@@ -61,8 +62,23 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             ? string.Empty
             : symbol.ContainingNamespace.ToDisplayString();
 
-        var properties = symbol.GetMembers()
-            .OfType<IPropertySymbol>()
+        // Collect properties including inherited ones
+        var allProperties = new List<IPropertySymbol>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var current = symbol;
+        while (current is not null && current.SpecialType != SpecialType.System_Object)
+        {
+            foreach (var member in current.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (seen.Add(member.Name))
+                {
+                    allProperties.Add(member);
+                }
+            }
+            current = current.BaseType;
+        }
+
+        var properties = allProperties
             .Select(static x => new PropertyModel(
                 x.Name,
                 x.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
@@ -70,11 +86,23 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 CanAccess(x.SetMethod)))
             .ToArray();
 
+        // Collect constructors (public, arity 0-4)
+        var constructors = symbol.InstanceConstructors
+            .Where(static c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length <= 4)
+            .OrderBy(static c => c.Parameters.Length)
+            .Select(static c => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(
+                c.Parameters.Select(static p => new ConstructorParameterModel(
+                    p.Name,
+                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))).ToArray())))
+            .ToArray();
+
         return Results.Success(new TypeModel(
             ns,
             symbol.GetClassName(),
             symbol.TypeArguments.Length,
-            new EquatableArray<PropertyModel>(properties)));
+            symbol.IsValueType,
+            new EquatableArray<PropertyModel>(properties),
+            new EquatableArray<ConstructorModel>(constructors)));
     }
 
     private static bool CanAccess(IMethodSymbol? method)
@@ -112,7 +140,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         if (attributeData.ConstructorArguments[0].Value is not INamedTypeSymbol symbol)
         {
-            return Results.Error<ClosedGenericModel>(null);
+            return Results.Errors<ClosedGenericModel>();
         }
 
         if (!symbol.IsGenericType)
@@ -148,13 +176,26 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             context.ReportDiagnostic(info);
         }
-        foreach (var info in closedGenerics.SelectMany(static x => x.ToArray().SelectError()))
+        foreach (var info in closedGenerics.SelectMany(static x => x.SelectError()))
         {
             context.ReportDiagnostic(info);
         }
 
         var targetTypes = types.SelectValue().ToList();
-        var closedTypes = closedGenerics.SelectMany(static x => x.ToArray().SelectValue()).ToList();
+        var closedTypes = closedGenerics.SelectMany(static x => x.SelectValue()).ToList();
+
+        // BTMA0003: no accessible properties
+        foreach (var type in targetTypes)
+        {
+            if (type.Properties.Count == 0)
+            {
+                // We can't recover a location here easily; emit at null location
+                context.ReportDiagnostic(Diagnostic.Create(
+                    Diagnostics.NoAccessibleMembers,
+                    Location.None,
+                    type.ClassName));
+            }
+        }
 
         var builder = new SourceBuilder();
         foreach (var type in targetTypes)
@@ -183,9 +224,10 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.NewLine();
 
         var className = String.IsNullOrEmpty(type.Namespace) ? $"global::{type.ClassName}" : $"global::{type.Namespace}.{type.ClassName}";
-        var properties = type.Properties.ToArray();
+        var properties = type.Properties;
         var readableProperties = properties.Where(static x => x.CanRead).ToArray();
         var writableProperties = properties.Where(static x => x.CanWrite).ToArray();
+        var constructors = type.Constructors;
 
         // namespace
         if (!String.IsNullOrEmpty(type.Namespace))
@@ -200,7 +242,13 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.NewLine();
 
         // factory
-        BuildFactorySource(builder, type, className, readableProperties, writableProperties);
+        BuildFactorySource(builder, type, className, properties, readableProperties, writableProperties);
+
+        if (constructors.Count > 0)
+        {
+            builder.NewLine();
+            BuildConstructorAccessorSource(builder, type, className, constructors);
+        }
     }
 
     private static void BuildAccessorSource(SourceBuilder builder, TypeModel type, string className, PropertyModel[] readableProperties, PropertyModel[] writableProperties)
@@ -213,61 +261,38 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
-        // getter dict
-        BeginDictionary(builder, "Getter", "global::System.Func<" + className + ", object?>");
-        for (var i = 0; i < readableProperties.Length; i++)
-        {
-            var property = readableProperties[i];
-            builder
-                .Indent()
-                .Append("{ \"")
-                .Append(property.Name)
-                .Append("\", static x => x.")
-                .Append(property.Name)
-                .Append(" }")
-                .AppendIf(i < readableProperties.Length - 1, ",")
-                .NewLine();
-        }
-        EndDictionary(builder);
-
-        builder.NewLine();
-
-        // setter dict
-        BeginDictionary(builder, "Setter", "global::System.Action<" + className + ", object?>");
-        for (var i = 0; i < writableProperties.Length; i++)
-        {
-            var property = writableProperties[i];
-            builder
-                .Indent()
-                .Append("{ \"")
-                .Append(property.Name)
-                .Append("\", static (x, v) => x.")
-                .Append(property.Name)
-                .Append(" = (")
-                .Append(property.Type)
-                .Append(")v! }")
-                .AppendIf(i < writableProperties.Length - 1, ",")
-                .NewLine();
-        }
-        EndDictionary(builder);
-
-        builder.NewLine();
-
         // get
         builder.Indent()
             .Append("public object? GetValue(object obj, string name)")
             .NewLine();
         builder.BeginScope();
-        builder
-            .Indent()
-            .Append("if (Getter.TryGetValue(name, out var fn)) return fn(global::System.Runtime.CompilerServices.Unsafe.As<")
-            .Append(className)
-            .Append(">(obj));")
-            .NewLine();
-        builder
-            .Indent()
-            .Append("throw new global::System.ArgumentException(\"Readable property not found.\", nameof(name));")
-            .NewLine();
+        if (type.IsValueType)
+        {
+            builder.Indent()
+                .Append("var target = (")
+                .Append(className)
+                .Append(")obj;")
+                .NewLine();
+        }
+        else
+        {
+            builder.Indent()
+                .Append("var target = global::System.Runtime.CompilerServices.Unsafe.As<")
+                .Append(className)
+                .Append(">(obj);")
+                .NewLine();
+        }
+        builder.Indent().Append("return name switch").NewLine();
+        builder.BeginScope();
+        foreach (var property in readableProperties)
+        {
+            builder.Indent()
+                .Append("\"").Append(property.Name).Append("\" => target.").Append(property.Name).Append(",")
+                .NewLine();
+        }
+        builder.Indent().Append("_ => throw new global::System.ArgumentException(\"Readable property not found.\", nameof(name))").NewLine();
+        builder.IndentLevel--;
+        builder.Indent().Append("};").NewLine();
         builder.EndScope();
 
         builder.NewLine();
@@ -277,23 +302,73 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("public void SetValue(object obj, string name, object? value)")
             .NewLine();
         builder.BeginScope();
-        builder
-            .Indent()
-            .Append("if (Setter.TryGetValue(name, out var fn)) { fn(global::System.Runtime.CompilerServices.Unsafe.As<")
-            .Append(className)
-            .Append(">(obj), value); return; }")
-            .NewLine();
-        builder
-            .Indent()
-            .Append("throw new global::System.ArgumentException(\"Writable property not found.\", nameof(name));")
-            .NewLine();
+        if (writableProperties.Length == 0)
+        {
+            builder.Indent()
+                .Append("throw new global::System.ArgumentException(\"Writable property not found.\", nameof(name));")
+                .NewLine();
+        }
+        else
+        {
+            if (type.IsValueType)
+            {
+                // Value types: unbox, modify, box back not possible in place. We use ref via Unsafe for structs stored as object.
+                // For simplicity, we cast - note this only works if callers hold a boxed struct reference.
+                builder.Indent()
+                    .Append("// Note: for value types the object must be a boxed instance; modifications affect the boxed copy.")
+                    .NewLine();
+            }
+            builder.Indent().Append("switch (name)").NewLine();
+            builder.BeginScope();
+            foreach (var property in writableProperties)
+            {
+                builder.Indent().Append("case \"").Append(property.Name).Append("\":").NewLine();
+                builder.IndentLevel++;
+                if (type.IsValueType)
+                {
+                    builder.Indent()
+                        .Append("global::System.Runtime.CompilerServices.Unsafe.Unbox<")
+                        .Append(className)
+                        .Append(">(obj).")
+                        .Append(property.Name)
+                        .Append(" = (")
+                        .Append(property.Type)
+                        .Append(")value!;")
+                        .NewLine();
+                }
+                else
+                {
+                    builder.Indent()
+                        .Append("global::System.Runtime.CompilerServices.Unsafe.As<")
+                        .Append(className)
+                        .Append(">(obj).")
+                        .Append(property.Name)
+                        .Append(" = (")
+                        .Append(property.Type)
+                        .Append(")value!;")
+                        .NewLine();
+                }
+                builder.Indent().Append("return;").NewLine();
+                builder.IndentLevel--;
+            }
+            builder.Indent().Append("default:").NewLine();
+            builder.IndentLevel++;
+            builder.Indent()
+                .Append("throw new global::System.ArgumentException(\"Writable property not found.\", nameof(name));")
+                .NewLine();
+            builder.IndentLevel--;
+            builder.EndScope();
+        }
         builder.EndScope();
 
         builder.EndScope();
     }
 
-    private static void BuildFactorySource(SourceBuilder builder, TypeModel type, string className, PropertyModel[] readableProperties, PropertyModel[] writableProperties)
+    private static void BuildFactorySource(SourceBuilder builder, TypeModel type, string className, PropertyModel[] allProperties, PropertyModel[] readableProperties, PropertyModel[] writableProperties)
     {
+        // MemberDescriptor static field
+        var memberDescriptors = allProperties;
+
         // class
         builder
             .Indent()
@@ -305,140 +380,230 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
-        // property
-
-        // getter
-        BeginDictionary(builder, "ObjectGetter", "global::System.Func<object, object?>");
-        for (var i = 0; i < readableProperties.Length; i++)
-        {
-            var property = readableProperties[i];
-            builder
-                .Indent()
-                .Append("{ \"")
-                .Append(property.Name)
-                .Append("\", static x => ((")
-                .Append(className)
-                .Append(")x).")
-                .Append(property.Name)
-                .Append("! }")
-                .AppendIf(i < readableProperties.Length - 1, ",")
-                .NewLine();
-        }
-        EndDictionary(builder);
-
-        builder.NewLine();
-
-        // setter
-        BeginDictionary(builder, "ObjectSetter", "global::System.Action<object, object?>");
-        for (var i = 0; i < writableProperties.Length; i++)
-        {
-            var property = writableProperties[i];
-            builder
-                .Indent()
-                .Append("{ \"")
-                .Append(property.Name)
-                .Append("\", static (x, v) => ((")
-                .Append(className)
-                .Append(")x).")
-                .Append(property.Name)
-                .Append(" = (")
-                .Append(property.Type)
-                .Append(")v! }")
-                .AppendIf(i < writableProperties.Length - 1, ",")
-                .NewLine();
-        }
-        EndDictionary(builder);
-
-        builder.NewLine();
-
-        // getter
-        BeginDictionary(builder, "TypedGetter", "object");
-        for (var i = 0; i < readableProperties.Length; i++)
-        {
-            var property = readableProperties[i];
-            builder
-                .Indent()
-                .Append("{ \"")
-                .Append(property.Name)
-                .Append("\", (global::System.Func<")
-                .Append(className)
-                .Append(", ")
-                .Append(property.Type)
-                .Append(">)(static (")
-                .Append(className)
-                .Append(" x) => x.")
-                .Append(property.Name)
-                .Append("!) }")
-                .AppendIf(i < readableProperties.Length - 1, ",")
-                .NewLine();
-        }
-        EndDictionary(builder);
-
-        builder.NewLine();
-
-        // setter
-        BeginDictionary(builder, "TypedSetter", "object");
-        for (var i = 0; i < writableProperties.Length; i++)
-        {
-            var property = writableProperties[i];
-            builder
-                .Indent()
-                .Append("{ \"")
-                .Append(property.Name)
-                .Append("\", (global::System.Action<")
-                .Append(className)
-                .Append(", ")
-                .Append(property.Type)
-                .Append(">)(static (")
-                .Append(className)
-                .Append(" x, ")
-                .Append(property.Type)
-                .Append(" v) => x.")
-                .Append(property.Name)
-                .Append(" = v!) }")
-                .AppendIf(i < writableProperties.Length - 1, ",")
-                .NewLine();
-        }
-        EndDictionary(builder);
-
-        builder.NewLine();
-
-        // method
-
-        // getter
-        builder
-            .Indent()
-            .Append("public global::System.Func<object, object?>? CreateGetter(string name) => ObjectGetter.GetValueOrDefault(name);")
-            .NewLine()
+        // Members property
+        builder.Indent()
+            .Append("private static readonly global::System.Collections.Generic.IReadOnlyList<global::BunnyTail.MemberAccessor.MemberDescriptor> MembersField =")
             .NewLine();
-
-        // setter
-        builder
-            .Indent()
-            .Append("public global::System.Action<object, object?>? CreateSetter(string name) => ObjectSetter.GetValueOrDefault(name);")
-            .NewLine()
+        builder.Indent()
+            .Append("    [")
             .NewLine();
+        builder.IndentLevel++;
+        foreach (var property in memberDescriptors)
+        {
+            builder.Indent()
+                .Append("new global::BunnyTail.MemberAccessor.MemberDescriptor(\"")
+                .Append(property.Name)
+                .Append("\", typeof(")
+                .Append(property.Type)
+                .Append("), ")
+                .Append(property.CanRead ? "true" : "false")
+                .Append(", ")
+                .Append(property.CanWrite ? "true" : "false")
+                .Append("),")
+                .NewLine();
+        }
+        builder.IndentLevel--;
+        builder.Indent().Append("    ];").NewLine();
+        builder.NewLine();
 
-        // getter
-        builder
-            .Indent()
+        builder.Indent()
+            .Append("public global::System.Collections.Generic.IReadOnlyList<global::BunnyTail.MemberAccessor.MemberDescriptor> Members => MembersField;")
+            .NewLine();
+        builder.NewLine();
+
+        // CreateGetter(string name) -> object
+        builder.Indent()
+            .Append("public global::System.Func<object, object?>? CreateGetter(string name)")
+            .NewLine();
+        builder.BeginScope();
+        builder.Indent().Append("return name switch").NewLine();
+        builder.BeginScope();
+        foreach (var property in readableProperties)
+        {
+            builder.Indent()
+                .Append("\"").Append(property.Name).Append("\" => static x => ((")
+                .Append(className).Append(")x).").Append(property.Name).Append("!,")
+                .NewLine();
+        }
+        builder.Indent().Append("_ => null").NewLine();
+        builder.IndentLevel--;
+        builder.Indent().Append("};").NewLine();
+        builder.EndScope();
+        builder.NewLine();
+
+        // CreateSetter(string name) -> object
+        builder.Indent()
+            .Append("public global::System.Action<object, object?>? CreateSetter(string name)")
+            .NewLine();
+        builder.BeginScope();
+        builder.Indent().Append("return name switch").NewLine();
+        builder.BeginScope();
+        foreach (var property in writableProperties)
+        {
+            if (type.IsValueType)
+            {
+                builder.Indent()
+                    .Append("\"").Append(property.Name).Append("\" => static (x, v) => global::System.Runtime.CompilerServices.Unsafe.Unbox<")
+                    .Append(className).Append(">(x).").Append(property.Name)
+                    .Append(" = (").Append(property.Type).Append(")v!,")
+                    .NewLine();
+            }
+            else
+            {
+                builder.Indent()
+                    .Append("\"").Append(property.Name).Append("\" => static (x, v) => ((")
+                    .Append(className).Append(")x).").Append(property.Name)
+                    .Append(" = (").Append(property.Type).Append(")v!,")
+                    .NewLine();
+            }
+        }
+        builder.Indent().Append("_ => null").NewLine();
+        builder.IndentLevel--;
+        builder.Indent().Append("};").NewLine();
+        builder.EndScope();
+        builder.NewLine();
+
+        // CreateGetter<TProperty>(string name)
+        builder.Indent()
             .Append("public global::System.Func<")
             .Append(className)
-            .Append(", TProperty>? CreateGetter<TProperty>(string name) => (global::System.Func<")
-            .Append(className)
-            .Append(", TProperty>?)TypedGetter.GetValueOrDefault(name);")
-            .NewLine()
+            .Append(", TProperty>? CreateGetter<TProperty>(string name)")
             .NewLine();
+        builder.BeginScope();
+        builder.Indent().Append("return name switch").NewLine();
+        builder.BeginScope();
+        foreach (var property in readableProperties)
+        {
+            builder.Indent()
+                .Append("\"").Append(property.Name).Append("\" => (global::System.Func<")
+                .Append(className).Append(", TProperty>?)(object?)(global::System.Func<")
+                .Append(className).Append(", ").Append(property.Type)
+                .Append(">)(static (").Append(className).Append(" x) => x.").Append(property.Name).Append("!),")
+                .NewLine();
+        }
+        builder.Indent().Append("_ => null").NewLine();
+        builder.IndentLevel--;
+        builder.Indent().Append("};").NewLine();
+        builder.EndScope();
+        builder.NewLine();
 
-        // setter
-        builder
-            .Indent()
+        // CreateSetter<TProperty>(string name)
+        builder.Indent()
             .Append("public global::System.Action<")
             .Append(className)
-            .Append(", TProperty>? CreateSetter<TProperty>(string name) => (global::System.Action<")
-            .Append(className)
-            .Append(", TProperty>?)TypedSetter.GetValueOrDefault(name);")
+            .Append(", TProperty>? CreateSetter<TProperty>(string name)")
             .NewLine();
+        builder.BeginScope();
+        builder.Indent().Append("return name switch").NewLine();
+        builder.BeginScope();
+        foreach (var property in writableProperties)
+        {
+            builder.Indent()
+                .Append("\"").Append(property.Name).Append("\" => (global::System.Action<")
+                .Append(className).Append(", TProperty>?)(object?)(global::System.Action<")
+                .Append(className).Append(", ").Append(property.Type)
+                .Append(">)(static (").Append(className).Append(" x, ").Append(property.Type)
+                .Append(" v) => x.").Append(property.Name).Append(" = v!),")
+                .NewLine();
+        }
+        builder.Indent().Append("_ => null").NewLine();
+        builder.IndentLevel--;
+        builder.Indent().Append("};").NewLine();
+        builder.EndScope();
+
+        builder.EndScope();
+    }
+
+    private static void BuildConstructorAccessorSource(SourceBuilder builder, TypeModel type, string className, ConstructorModel[] constructors)
+    {
+        builder.Indent()
+            .Append("internal sealed class ")
+            .AppendBy(type, BuildConstructorAccessorName)
+            .Append(" : global::BunnyTail.MemberAccessor.IConstructorAccessor<")
+            .Append(className)
+            .Append('>')
+            .NewLine();
+        builder.BeginScope();
+
+        // Collect by arity
+        var byArity = constructors.GroupBy(static c => c.Parameters.Count)
+            .ToDictionary(static g => g.Key, static g => g.First());
+
+        // Create() - 0 args
+        builder.Indent().Append("public ").Append(className).Append(" Create()").NewLine();
+        builder.BeginScope();
+        if (byArity.TryGetValue(0, out _))
+        {
+            builder.Indent().Append("return new ").Append(className).Append("();").NewLine();
+        }
+        else
+        {
+            builder.Indent().Append("throw new global::System.NotSupportedException(\"No parameterless constructor.\");").NewLine();
+        }
+        builder.EndScope();
+        builder.NewLine();
+
+        // Create<TArg>(TArg arg) - 1 arg
+        builder.Indent().Append("public ").Append(className).Append(" Create<TArg>(TArg arg)").NewLine();
+        builder.BeginScope();
+        if (byArity.TryGetValue(1, out var ctor1))
+        {
+            var p = ctor1.Parameters[0];
+            builder.Indent().Append("return new ").Append(className).Append("((").Append(p.Type).Append(")(object)arg!);").NewLine();
+        }
+        else
+        {
+            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 1-parameter constructor.\");").NewLine();
+        }
+        builder.EndScope();
+        builder.NewLine();
+
+        // Create<TArg1, TArg2>(TArg1 arg1, TArg2 arg2) - 2 args
+        builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2>(TArg1 arg1, TArg2 arg2)").NewLine();
+        builder.BeginScope();
+        if (byArity.TryGetValue(2, out var ctor2))
+        {
+            var parms = ctor2.Parameters;
+            builder.Indent().Append("return new ").Append(className)
+                .Append("((").Append(parms[0].Type).Append(")(object)arg1!, (").Append(parms[1].Type).Append(")(object)arg2!);").NewLine();
+        }
+        else
+        {
+            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 2-parameter constructor.\");").NewLine();
+        }
+        builder.EndScope();
+        builder.NewLine();
+
+        // Create<TArg1, TArg2, TArg3>
+        builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2, TArg3>(TArg1 arg1, TArg2 arg2, TArg3 arg3)").NewLine();
+        builder.BeginScope();
+        if (byArity.TryGetValue(3, out var ctor3))
+        {
+            var parms = ctor3.Parameters;
+            builder.Indent().Append("return new ").Append(className)
+                .Append("((").Append(parms[0].Type).Append(")(object)arg1!, (").Append(parms[1].Type).Append(")(object)arg2!, (").Append(parms[2].Type).Append(")(object)arg3!);").NewLine();
+        }
+        else
+        {
+            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 3-parameter constructor.\");").NewLine();
+        }
+        builder.EndScope();
+        builder.NewLine();
+
+        // Create<TArg1, TArg2, TArg3, TArg4>
+        builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2, TArg3, TArg4>(TArg1 arg1, TArg2 arg2, TArg3 arg3, TArg4 arg4)").NewLine();
+        builder.BeginScope();
+        if (byArity.TryGetValue(4, out var ctor4))
+        {
+            var parms = ctor4.Parameters;
+            builder.Indent().Append("return new ").Append(className)
+                .Append("((").Append(parms[0].Type).Append(")(object)arg1!, (").Append(parms[1].Type).Append(")(object)arg2!, (").Append(parms[2].Type).Append(")(object)arg3!, (").Append(parms[3].Type).Append(")(object)arg4!);").NewLine();
+        }
+        else
+        {
+            builder.Indent().Append("throw new global::System.NotSupportedException(\"No 4-parameter constructor.\");").NewLine();
+        }
+        builder.EndScope();
 
         builder.EndScope();
     }
@@ -463,24 +628,53 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder
             .Indent()
+            .Append("[global::System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(\"AOT\", \"IL3050\", Justification = \"Open-generic registrations require dynamic code; AOT users should use [TypedAccessor] to pre-register closed types.\")]")
+            .NewLine();
+        builder
+            .Indent()
+            .Append("[global::System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(\"Trimming\", \"IL2026\", Justification = \"Open-generic registrations require unreferenced code; AOT users should use [TypedAccessor] to pre-register closed types.\")]")
+            .NewLine();
+        builder
+            .Indent()
             .Append("public static void Initialize()")
             .NewLine();
         builder.BeginScope();
 
         foreach (var type in types)
         {
-            builder
-                .Indent()
-                .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterFactory(typeof(")
-                .AppendBy(type, BuildRegistryTargetName)
-                .Append("), typeof(")
-                .AppendBy(type, BuildRegistryAccessorName)
-                .Append("), typeof(")
-                .AppendBy(type, BuildRegistryFactoryName)
-                .Append("));")
-                .NewLine();
-            if (type.TypeArgumentCount > 0)
+            if (type.TypeArgumentCount == 0)
             {
+                // Non-generic: register instances directly (AOT-safe, no Activator)
+                builder
+                    .Indent()
+                    .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterFactory(typeof(")
+                    .AppendBy(type, BuildRegistryTargetName)
+                    .Append("), new ")
+                    .AppendBy(type, BuildRegistryAccessorName)
+                    .Append("(), new ")
+                    .AppendBy(type, BuildRegistryFactoryName)
+                    .Append("());")
+                    .NewLine();
+
+                // Register constructor accessor if constructors exist
+                if (type.Constructors.Count > 0)
+                {
+                    builder
+                        .Indent()
+                        .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterConstructor<")
+                        .AppendBy(type, BuildRegistryTargetName)
+                        .Append(">(typeof(")
+                        .AppendBy(type, BuildRegistryTargetName)
+                        .Append("), new ")
+                        .AppendBy(type, BuildRegistryConstructorAccessorName)
+                        .Append("());")
+                        .NewLine();
+                }
+            }
+            else
+            {
+                // Open generic: register open-generic factory delegate + pre-registered closed types
+                // Pre-registered closed types from [TypedAccessor]
                 var namePart = type.ClassName.AsSpan(0, type.ClassName.IndexOf('<') + 1);
                 foreach (var closedType in closedTypes)
                 {
@@ -491,14 +685,38 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                             .Indent()
                             .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterFactory(typeof(")
                             .AppendBy(closedType, BuildRegistryTargetName)
-                            .Append("), typeof(")
+                            .Append("), new ")
                             .AppendBy(closedType, BuildRegistryAccessorName)
-                            .Append("), typeof(")
+                            .Append("(), new ")
                             .AppendBy(closedType, BuildRegistryFactoryName)
-                            .Append("));")
+                            .Append("());")
                             .NewLine();
                     }
                 }
+
+                // Open-generic delegate registration for on-demand instantiation
+                builder
+                    .Indent()
+                    .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterOpenGenericFactory(typeof(")
+                    .AppendBy(type, BuildRegistryOpenTargetName)
+                    .Append("),")
+                    .NewLine();
+                builder.IndentLevel++;
+                builder
+                    .Indent()
+                    .Append("static typeArgs => (global::BunnyTail.MemberAccessor.IAccessor)global::System.Activator.CreateInstance(")
+                    .Append("typeof(")
+                    .AppendBy(type, BuildRegistryAccessorOpenName)
+                    .Append(").MakeGenericType(typeArgs))!,")
+                    .NewLine();
+                builder
+                    .Indent()
+                    .Append("static typeArgs => (global::BunnyTail.MemberAccessor.IAccessorFactory)global::System.Activator.CreateInstance(")
+                    .Append("typeof(")
+                    .AppendBy(type, BuildRegistryFactoryOpenName)
+                    .Append(").MakeGenericType(typeArgs))!);")
+                    .NewLine();
+                builder.IndentLevel--;
             }
         }
 
@@ -508,7 +726,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Helper
+    // Helper: name builders
     // ------------------------------------------------------------
 
     private static void BuildAccessorName(SourceBuilder builder, TypeModel model)
@@ -537,6 +755,19 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
     }
 
+    private static void BuildConstructorAccessorName(SourceBuilder builder, TypeModel model)
+    {
+        var index = model.ClassName.IndexOf('<');
+        if (index < 0)
+        {
+            builder.Append(model.ClassName).Append(ConstructorAccessorSuffix);
+        }
+        else
+        {
+            builder.Append(model.ClassName.Substring(0, index)).Append(ConstructorAccessorSuffix).Append(model.ClassName.Substring(index));
+        }
+    }
+
     private static void BuildRegistryTargetName(SourceBuilder builder, TypeModel model)
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
@@ -550,6 +781,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             builder.Append(model.ClassName.Substring(0, index)).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
         }
+    }
+
+    private static void BuildRegistryOpenTargetName(SourceBuilder builder, TypeModel model)
+    {
+        builder.AppendBy(model.Namespace, BuildNamespace);
+        var index = model.ClassName.IndexOf('<');
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index))
+               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
     }
 
     private static void BuildRegistryAccessorName(SourceBuilder builder, TypeModel model)
@@ -567,6 +806,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
     }
 
+    private static void BuildRegistryAccessorOpenName(SourceBuilder builder, TypeModel model)
+    {
+        builder.AppendBy(model.Namespace, BuildNamespace);
+        var index = model.ClassName.IndexOf('<');
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(AccessorSuffix)
+               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+    }
+
     private static void BuildRegistryFactoryName(SourceBuilder builder, TypeModel model)
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
@@ -580,6 +827,20 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             builder.Append(model.ClassName.Substring(0, index)).Append(AccessorFactorySuffix).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
         }
+    }
+
+    private static void BuildRegistryFactoryOpenName(SourceBuilder builder, TypeModel model)
+    {
+        builder.AppendBy(model.Namespace, BuildNamespace);
+        var index = model.ClassName.IndexOf('<');
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(AccessorFactorySuffix)
+               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+    }
+
+    private static void BuildRegistryConstructorAccessorName(SourceBuilder builder, TypeModel model)
+    {
+        builder.AppendBy(model.Namespace, BuildNamespace);
+        builder.Append(model.ClassName).Append(ConstructorAccessorSuffix);
     }
 
     private static void BuildRegistryTargetName(SourceBuilder builder, ClosedGenericModel model)
@@ -621,34 +882,6 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             builder.Append(',');
         }
         builder.Append('>');
-    }
-
-    private static void BeginDictionary(SourceBuilder builder, string name, string valueType)
-    {
-        builder
-            .Indent()
-            .Append("private static readonly global::System.Collections.Frozen.FrozenDictionary<string, ")
-            .Append(valueType)
-            .Append("> ")
-            .Append(name)
-            .Append(" = global::System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new global::System.Collections.Generic.Dictionary<string, ")
-            .Append(valueType)
-            .Append(">")
-            .NewLine();
-        builder
-            .Indent()
-            .Append("{")
-            .NewLine();
-        builder.IndentLevel++;
-    }
-
-    private static void EndDictionary(SourceBuilder builder)
-    {
-        builder.IndentLevel--;
-        builder
-            .Indent()
-            .Append("});")
-            .NewLine();
     }
 
     private static string MakeFilename(string ns, string className)

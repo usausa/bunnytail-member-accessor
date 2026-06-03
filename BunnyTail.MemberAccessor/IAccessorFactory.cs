@@ -2,6 +2,8 @@ namespace BunnyTail.MemberAccessor;
 
 public interface IAccessorFactory
 {
+    IReadOnlyList<MemberDescriptor> Members { get; }
+
     Func<object, object?>? CreateGetter(string name);
 
     Action<object, object?>? CreateSetter(string name);

@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public sealed class GenerateAccessorAttribute : Attribute
 {
 }
