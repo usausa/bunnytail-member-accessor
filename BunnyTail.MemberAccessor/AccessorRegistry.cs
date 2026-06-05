@@ -58,6 +58,7 @@ public static class AccessorRegistry
     // Static generic cache (lock-free hot path)
     // ------------------------------------------------------------
 
+    // ReSharper disable once UnusedTypeParameter
     private static class AccessorCache<T>
     {
 #pragma warning disable SA1401 // Field should be private
