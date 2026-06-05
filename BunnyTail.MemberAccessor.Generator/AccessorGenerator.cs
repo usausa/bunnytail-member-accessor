@@ -69,6 +69,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var current = symbol;
         while (current is not null && current.SpecialType != SpecialType.System_Object)
         {
+            // ReSharper disable once LoopCanBeConvertedToQuery
             foreach (var member in current.GetMembers().OfType<IPropertySymbol>())
             {
                 // Public instance properties only (exclude static members, indexers, and properties with no public accessor)
@@ -596,7 +597,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private static void BuildCreateBody(SourceBuilder builder, string className, Dictionary<int, ConstructorModel[]> byArity, int arity)
     {
-        if (!byArity.TryGetValue(arity, out var ctors))
+        if (!byArity.TryGetValue(arity, out var constructors))
         {
             builder.Indent()
                 .Append("throw new global::System.NotSupportedException(\"No ")
@@ -607,14 +608,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
 
         // Single constructor for the arity: bind directly (preserves implicit-conversion behavior).
-        if (ctors.Length == 1)
+        if (constructors.Length == 1)
         {
-            BuildNewExpression(builder, className, ctors[0], arity);
+            BuildNewExpression(builder, className, constructors[0], arity);
             return;
         }
 
         // Multiple constructors share the arity: select by exact argument type at runtime.
-        foreach (var ctor in ctors)
+        foreach (var ctor in constructors)
         {
             builder.Indent().Append("if (");
             for (var i = 0; i < arity; i++)

@@ -115,8 +115,10 @@ public class FilterData
 {
     public int Value { get; set; }
 
+    // ReSharper disable once UnassignedGetOnlyAutoProperty
     public int ReadOnly { get; }
 
+    // ReSharper disable once UnusedAutoPropertyAccessor.Local
     public int ReadPublicWritePrivate { get; private set; }
 
     public static int Shared { get; set; }
