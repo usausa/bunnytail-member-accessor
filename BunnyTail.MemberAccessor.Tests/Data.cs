@@ -42,6 +42,28 @@ public record struct StructData
     public string Name { get; set; }
 }
 
+// record (class) support - mutable properties, treated as a reference type
+[GenerateAccessor]
+public record RecordData
+{
+    public int Id { get; set; }
+
+    public string Name { get; set; } = default!;
+}
+
+// Positional record (class) - primary constructor with init-only properties
+[GenerateAccessor]
+public record PositionalRecord(int Id, string Name);
+
+// init-only property support - init setters are treated as read-only
+[GenerateAccessor]
+public class InitOnlyData
+{
+    public int Id { get; set; }
+
+    public string Name { get; init; } = default!;
+}
+
 // Constructor accessor test data
 [GenerateAccessor]
 public class CtorData0

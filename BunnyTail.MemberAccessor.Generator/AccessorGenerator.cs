@@ -96,7 +96,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 x.Name,
                 x.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
                 CanAccess(x.GetMethod),
-                CanAccess(x.SetMethod)))
+                CanWrite(x.SetMethod)))
             .ToArray();
 
         // Collect constructors (public, arity 0-4)
@@ -121,6 +121,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static bool CanAccess(IMethodSymbol? method)
     {
         return (method is not null) && (method.DeclaredAccessibility == Accessibility.Public);
+    }
+
+    // init-only setters cannot be assigned outside of object initialization, so they are treated as read-only.
+    private static bool CanWrite(IMethodSymbol? method)
+    {
+        return (method is not null) && (method.DeclaredAccessibility == Accessibility.Public) && !method.IsInitOnly;
     }
 
     private static EquatableArray<Result<ClosedGenericModel>> GetClosedGenericModel(GeneratorAttributeSyntaxContext context)
