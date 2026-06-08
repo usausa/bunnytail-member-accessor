@@ -17,11 +17,11 @@ public static class Program
 {
     public static void Main(string[] args)
     {
-        BenchmarkSwitcher.FromTypes([typeof(Benchmark), typeof(TypeScenarioBenchmark)]).Run(args);
+        BenchmarkRunner.Run<AccessorBenchmark>(args: args);
     }
 }
 
-public class BenchmarkConfig : ManualConfig
+public sealed class BenchmarkConfig : ManualConfig
 {
     public BenchmarkConfig()
     {
@@ -33,131 +33,286 @@ public class BenchmarkConfig : ManualConfig
             StatisticColumn.P90,
             StatisticColumn.Error,
             StatisticColumn.StdDev);
-        AddDiagnoser(MemoryDiagnoser.Default, new DisassemblyDiagnoser(new DisassemblyDiagnoserConfig(maxDepth: 3, printSource: true, printInstructionAddresses: true, exportDiff: true)));
+        AddDiagnoser(
+            MemoryDiagnoser.Default,
+            new DisassemblyDiagnoser(new DisassemblyDiagnoserConfig(maxDepth: 3, printSource: true, printInstructionAddresses: true, exportDiff: true)));
         AddJob(Job.MediumRun);
     }
 }
 
-#pragma warning disable CA1822
+// See BENCHMARK.md for the scenario / operation / processing-kind matrix.
+// Methods are listed fastest-predicted first:
+// Direct, AccessorCached, Accessor, Expression, Factory, ReflectionCached, Reflection.
 [Config(typeof(BenchmarkConfig))]
-public class Benchmark
+[GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
+[CategoriesColumn]
+public class AccessorBenchmark
 {
     private const int N = 1000;
 
-    private static readonly Data Data = new();
+    // Targets
+    private Data classData = default!;
+    private StructData structData;
+    private object structBoxed = default!;
+    private GenericData<int> generic = default!;
+    private LargeData large = default!;
 
-    private PropertyInfo property = default!;
+    // Cached PropertyInfo
+    private PropertyInfo classIntPi = default!;
+    private PropertyInfo classStringPi = default!;
+    private PropertyInfo structPi = default!;
+    private PropertyInfo genericPi = default!;
+    private PropertyInfo largePi = default!;
 
-    private IAccessor accessor = default!;
+    // Cached IAccessor (object, name-based)
+    private IAccessor dataAccessor = default!;
+    private IAccessor structAccessor = default!;
+    private IAccessor genericAccessor = default!;
+    private IAccessor largeAccessor = default!;
 
-    private Func<Data, int> expressionGetter = default!;
-    private Func<Data, int> generatorGetter = default!;
-    private Action<Data, int> expressionSetter = default!;
-    private Action<Data, int> generatorSetter = default!;
+    // Generated typed delegates (Factory)
+    private Func<Data, int> classIntFactoryGet = default!;
+    private Action<Data, int> classIntFactorySet = default!;
+    private Func<Data, string> classStringFactoryGet = default!;
+    private Action<Data, string> classStringFactorySet = default!;
+    private Func<StructData, int> structFactoryGet = default!;
+    private Func<GenericData<int>, int> genericFactoryGet = default!;
+    private Action<GenericData<int>, int> genericFactorySet = default!;
+    private Func<LargeData, int> largeFactoryGet = default!;
+    private Action<LargeData, int> largeFactorySet = default!;
+
+    // Compiled expression delegates
+    private Func<Data, int> classIntExprGet = default!;
+    private Action<Data, int> classIntExprSet = default!;
+    private Func<Data, string> classStringExprGet = default!;
+    private Action<Data, string> classStringExprSet = default!;
+    private Func<StructData, int> structExprGet = default!;
+    private Func<GenericData<int>, int> genericExprGet = default!;
+    private Action<GenericData<int>, int> genericExprSet = default!;
+    private Func<LargeData, int> largeExprGet = default!;
+    private Action<LargeData, int> largeExprSet = default!;
 
     [GlobalSetup]
     public void Setup()
     {
-        property = typeof(Data).GetProperty(nameof(Data.Id))!;
+        classData = new Data { Id = 1, Name = "abc" };
+        structData = new StructData { Id = 1, Name = "abc" };
+        structBoxed = structData;
+        generic = new GenericData<int> { Value = 1 };
+        large = new LargeData { Value10 = 1 };
 
-        accessor = AccessorRegistry.FindAccessor<Data>()!;
+        classIntPi = typeof(Data).GetProperty(nameof(Data.Id))!;
+        classStringPi = typeof(Data).GetProperty(nameof(Data.Name))!;
+        structPi = typeof(StructData).GetProperty(nameof(StructData.Id))!;
+        genericPi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
+        largePi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
 
-        expressionGetter = ExpressionHelper.CreateGetter<Data, int>(nameof(Data.Id));
-        expressionSetter = ExpressionHelper.CreateSetter<Data, int>(nameof(Data.Id));
+        dataAccessor = AccessorRegistry.FindAccessor<Data>()!;
+        structAccessor = AccessorRegistry.FindAccessor<StructData>()!;
+        genericAccessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
+        largeAccessor = AccessorRegistry.FindAccessor<LargeData>()!;
 
-        var accessorFactory = AccessorRegistry.FindFactory<Data>()!;
-        generatorGetter = accessorFactory.CreateGetter<int>(nameof(Data.Id))!;
-        generatorSetter = accessorFactory.CreateSetter<int>(nameof(Data.Id))!;
+        var dataFactory = AccessorRegistry.FindFactory<Data>()!;
+        classIntFactoryGet = dataFactory.CreateGetter<int>(nameof(Data.Id))!;
+        classIntFactorySet = dataFactory.CreateSetter<int>(nameof(Data.Id))!;
+        classStringFactoryGet = dataFactory.CreateGetter<string>(nameof(Data.Name))!;
+        classStringFactorySet = dataFactory.CreateSetter<string>(nameof(Data.Name))!;
+        structFactoryGet = AccessorRegistry.FindFactory<StructData>()!.CreateGetter<int>(nameof(StructData.Id))!;
+        var genericFactory = AccessorRegistry.FindFactory<GenericData<int>>()!;
+        genericFactoryGet = genericFactory.CreateGetter<int>(nameof(GenericData<int>.Value))!;
+        genericFactorySet = genericFactory.CreateSetter<int>(nameof(GenericData<int>.Value))!;
+        var largeFactory = AccessorRegistry.FindFactory<LargeData>()!;
+        largeFactoryGet = largeFactory.CreateGetter<int>(nameof(LargeData.Value10))!;
+        largeFactorySet = largeFactory.CreateSetter<int>(nameof(LargeData.Value10))!;
+
+        classIntExprGet = ExpressionHelper.CreateGetter<Data, int>(nameof(Data.Id));
+        classIntExprSet = ExpressionHelper.CreateSetter<Data, int>(nameof(Data.Id));
+        classStringExprGet = ExpressionHelper.CreateGetter<Data, string>(nameof(Data.Name));
+        classStringExprSet = ExpressionHelper.CreateSetter<Data, string>(nameof(Data.Name));
+        structExprGet = ExpressionHelper.CreateGetter<StructData, int>(nameof(StructData.Id));
+        genericExprGet = ExpressionHelper.CreateGetter<GenericData<int>, int>(nameof(GenericData<int>.Value));
+        genericExprSet = ExpressionHelper.CreateSetter<GenericData<int>, int>(nameof(GenericData<int>.Value));
+        largeExprGet = ExpressionHelper.CreateGetter<LargeData, int>(nameof(LargeData.Value10));
+        largeExprSet = ExpressionHelper.CreateSetter<LargeData, int>(nameof(LargeData.Value10));
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
-    public void DirectGetter()
+    // ------------------------------------------------------------
+    // ClassInt (class / int)
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public int ClassIntGetDirect()
     {
-        var o = Data;
+        var o = classData;
+        var v = 0;
         for (var i = 0; i < N; i++)
         {
-            _ = o.Id;
+            v = o.Id;
         }
+        return v;
     }
 
+    [BenchmarkCategory("ClassInt-Get")]
     [Benchmark(OperationsPerInvoke = N)]
-    public void PropertyGetter()
+    public object? ClassIntGetAccessorCached()
     {
-        var o = Data;
+        var o = classData;
+        var accessor = dataAccessor;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = accessor.GetValue(o, nameof(Data.Id));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassIntGetAccessor()
+    {
+        var o = classData;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            v = accessor.GetValue(o, nameof(Data.Id));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int ClassIntGetExpression()
+    {
+        var o = classData;
+        var get = classIntExprGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int ClassIntGetFactory()
+    {
+        var o = classData;
+        var get = classIntFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassIntGetReflectionCached()
+    {
+        var o = classData;
+        var pi = classIntPi;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassIntGetReflection()
+    {
+        var o = classData;
+        object? v = null;
         for (var i = 0; i < N; i++)
         {
             var pi = typeof(Data).GetProperty(nameof(Data.Id))!;
-            _ = pi.GetValue(o);
+            v = pi.GetValue(o);
         }
+        return v;
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
-    public void PropertyGetterCashed()
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public void ClassIntSetDirect()
     {
-        var o = Data;
-        var pi = property;
-        for (var i = 0; i < N; i++)
-        {
-            _ = pi.GetValue(o);
-        }
-    }
-
-    [Benchmark(OperationsPerInvoke = N)]
-    public void AccessorGetter()
-    {
-        var o = Data;
-        for (var i = 0; i < N; i++)
-        {
-            var access = AccessorRegistry.FindAccessor<Data>()!;
-            _ = access.GetValue(o, nameof(Data.Id));
-        }
-    }
-
-    [Benchmark(OperationsPerInvoke = N)]
-    public void AccessorGetterCached()
-    {
-        var o = Data;
-        var access = accessor;
-        for (var i = 0; i < N; i++)
-        {
-            _ = access.GetValue(o, nameof(Data.Id));
-        }
-    }
-
-    [Benchmark(OperationsPerInvoke = N)]
-    public void ExpressionGetter()
-    {
-        var o = Data;
-        for (var i = 0; i < N; i++)
-        {
-            _ = expressionGetter(o);
-        }
-    }
-
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GeneratorGetter()
-    {
-        var o = Data;
-        for (var i = 0; i < N; i++)
-        {
-            _ = generatorGetter(o);
-        }
-    }
-
-    [Benchmark(OperationsPerInvoke = N)]
-    public void DirectSetter()
-    {
-        var o = Data;
+        var o = classData;
         for (var i = 0; i < N; i++)
         {
             o.Id = 0;
         }
     }
 
+    [BenchmarkCategory("ClassInt-Set")]
     [Benchmark(OperationsPerInvoke = N)]
-    public void PropertySetter()
+    public void ClassIntSetAccessorCached()
     {
-        var o = Data;
+        var o = classData;
+        var accessor = dataAccessor;
+        for (var i = 0; i < N; i++)
+        {
+            accessor.SetValue(o, nameof(Data.Id), 0);
+        }
+    }
+
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassIntSetAccessor()
+    {
+        var o = classData;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            accessor.SetValue(o, nameof(Data.Id), 0);
+        }
+    }
+
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassIntSetExpression()
+    {
+        var o = classData;
+        var set = classIntExprSet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassIntSetFactory()
+    {
+        var o = classData;
+        var set = classIntFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassIntSetReflectionCached()
+    {
+        var o = classData;
+        var pi = classIntPi;
+        for (var i = 0; i < N; i++)
+        {
+            pi.SetValue(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassIntSetReflection()
+    {
+        var o = classData;
         for (var i = 0; i < N; i++)
         {
             var pi = typeof(Data).GetProperty(nameof(Data.Id))!;
@@ -165,66 +320,719 @@ public class Benchmark
         }
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
-    public void PropertySetterCashed()
+    // ------------------------------------------------------------
+    // ClassString (class / string)
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public string? ClassStringGetDirect()
     {
-        var o = Data;
-        var pi = property;
+        var o = classData;
+        string? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = o.Name;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassStringGetAccessorCached()
+    {
+        var o = classData;
+        var accessor = dataAccessor;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = accessor.GetValue(o, nameof(Data.Name));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassStringGetAccessor()
+    {
+        var o = classData;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            v = accessor.GetValue(o, nameof(Data.Name));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public string? ClassStringGetExpression()
+    {
+        var o = classData;
+        var get = classStringExprGet;
+        string? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public string? ClassStringGetFactory()
+    {
+        var o = classData;
+        var get = classStringFactoryGet;
+        string? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassStringGetReflectionCached()
+    {
+        var o = classData;
+        var pi = classStringPi;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? ClassStringGetReflection()
+    {
+        var o = classData;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(Data).GetProperty(nameof(Data.Name))!;
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public void ClassStringSetDirect()
+    {
+        var o = classData;
+        for (var i = 0; i < N; i++)
+        {
+            o.Name = "x";
+        }
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassStringSetAccessorCached()
+    {
+        var o = classData;
+        var accessor = dataAccessor;
+        for (var i = 0; i < N; i++)
+        {
+            accessor.SetValue(o, nameof(Data.Name), "x");
+        }
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassStringSetAccessor()
+    {
+        var o = classData;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            accessor.SetValue(o, nameof(Data.Name), "x");
+        }
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassStringSetExpression()
+    {
+        var o = classData;
+        var set = classStringExprSet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, "x");
+        }
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassStringSetFactory()
+    {
+        var o = classData;
+        var set = classStringFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, "x");
+        }
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassStringSetReflectionCached()
+    {
+        var o = classData;
+        var pi = classStringPi;
+        for (var i = 0; i < N; i++)
+        {
+            pi.SetValue(o, "x");
+        }
+    }
+
+    [BenchmarkCategory("ClassString-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassStringSetReflection()
+    {
+        var o = classData;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(Data).GetProperty(nameof(Data.Name))!;
+            pi.SetValue(o, "x");
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Struct (struct / int) - value type, accessed via boxed object
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public int StructGetDirect()
+    {
+        var s = structData;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = s.Id;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? StructGetAccessorCached()
+    {
+        var o = structBoxed;
+        var accessor = structAccessor;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = accessor.GetValue(o, nameof(StructData.Id));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? StructGetAccessor()
+    {
+        var o = structBoxed;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<StructData>()!;
+            v = accessor.GetValue(o, nameof(StructData.Id));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int StructGetExpression()
+    {
+        var s = structData;
+        var get = structExprGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(s);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int StructGetFactory()
+    {
+        var s = structData;
+        var get = structFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(s);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? StructGetReflectionCached()
+    {
+        var o = structBoxed;
+        var pi = structPi;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? StructGetReflection()
+    {
+        var o = structBoxed;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(StructData).GetProperty(nameof(StructData.Id))!;
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    // Struct-Set: typed delegate (Factory/Expression) is not supported for value types.
+    [BenchmarkCategory("Struct-Set")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public void StructSetDirect()
+    {
+        var s = structData;
+        for (var i = 0; i < N; i++)
+        {
+            s.Id = 0;
+        }
+        structData = s;
+    }
+
+    [BenchmarkCategory("Struct-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void StructSetAccessorCached()
+    {
+        var o = structBoxed;
+        var accessor = structAccessor;
+        for (var i = 0; i < N; i++)
+        {
+            accessor.SetValue(o, nameof(StructData.Id), 0);
+        }
+    }
+
+    [BenchmarkCategory("Struct-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void StructSetAccessor()
+    {
+        var o = structBoxed;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<StructData>()!;
+            accessor.SetValue(o, nameof(StructData.Id), 0);
+        }
+    }
+
+    [BenchmarkCategory("Struct-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void StructSetReflectionCached()
+    {
+        var o = structBoxed;
+        var pi = structPi;
         for (var i = 0; i < N; i++)
         {
             pi.SetValue(o, 0);
         }
     }
 
+    [BenchmarkCategory("Struct-Set")]
     [Benchmark(OperationsPerInvoke = N)]
-    public void AccessorSetter()
+    public void StructSetReflection()
     {
-        var o = Data;
+        var o = structBoxed;
         for (var i = 0; i < N; i++)
         {
-            var access = AccessorRegistry.FindAccessor<Data>()!;
-            access.SetValue(o, nameof(Data.Id), 0);
+            var pi = typeof(StructData).GetProperty(nameof(StructData.Id))!;
+            pi.SetValue(o, 0);
         }
     }
 
-    [Benchmark(OperationsPerInvoke = N)]
-    public void AccessorSetterCached()
+    // ------------------------------------------------------------
+    // Generic (GenericData<int> / int)
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public int GenericGetDirect()
     {
-        var o = Data;
-        var access = accessor;
+        var o = generic;
+        var v = 0;
         for (var i = 0; i < N; i++)
         {
-            access.SetValue(o, nameof(Data.Id), 0);
+            v = o.Value;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? GenericGetAccessorCached()
+    {
+        var o = generic;
+        var accessor = genericAccessor;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = accessor.GetValue(o, nameof(GenericData<int>.Value));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? GenericGetAccessor()
+    {
+        var o = generic;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
+            v = accessor.GetValue(o, nameof(GenericData<int>.Value));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int GenericGetExpression()
+    {
+        var o = generic;
+        var get = genericExprGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int GenericGetFactory()
+    {
+        var o = generic;
+        var get = genericFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? GenericGetReflectionCached()
+    {
+        var o = generic;
+        var pi = genericPi;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? GenericGetReflection()
+    {
+        var o = generic;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Generic-Set")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public void GenericSetDirect()
+    {
+        var o = generic;
+        for (var i = 0; i < N; i++)
+        {
+            o.Value = 0;
         }
     }
 
+    [BenchmarkCategory("Generic-Set")]
     [Benchmark(OperationsPerInvoke = N)]
-    public void ExpressionSetter()
+    public void GenericSetAccessorCached()
     {
-        var o = Data;
+        var o = generic;
+        var accessor = genericAccessor;
         for (var i = 0; i < N; i++)
         {
-            expressionSetter(o, 0);
+            accessor.SetValue(o, nameof(GenericData<int>.Value), 0);
         }
     }
 
+    [BenchmarkCategory("Generic-Set")]
     [Benchmark(OperationsPerInvoke = N)]
-    public void GeneratorSetter()
+    public void GenericSetAccessor()
     {
-        var o = Data;
+        var o = generic;
         for (var i = 0; i < N; i++)
         {
-            generatorSetter(o, 0);
+            var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
+            accessor.SetValue(o, nameof(GenericData<int>.Value), 0);
         }
     }
-}
 
-[GenerateAccessor]
-public class Data
-{
-    public int Id { get; set; }
+    [BenchmarkCategory("Generic-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void GenericSetExpression()
+    {
+        var o = generic;
+        var set = genericExprSet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, 0);
+        }
+    }
 
-    public string Name { get; set; } = default!;
+    [BenchmarkCategory("Generic-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void GenericSetFactory()
+    {
+        var o = generic;
+        var set = genericFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("Generic-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void GenericSetReflectionCached()
+    {
+        var o = generic;
+        var pi = genericPi;
+        for (var i = 0; i < N; i++)
+        {
+            pi.SetValue(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("Generic-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void GenericSetReflection()
+    {
+        var o = generic;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
+            pi.SetValue(o, 0);
+        }
+    }
+
+    // ------------------------------------------------------------
+    // Large (20-property class / int)
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public int LargeGetDirect()
+    {
+        var o = large;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = o.Value10;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? LargeGetAccessorCached()
+    {
+        var o = large;
+        var accessor = largeAccessor;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = accessor.GetValue(o, nameof(LargeData.Value10));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? LargeGetAccessor()
+    {
+        var o = large;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<LargeData>()!;
+            v = accessor.GetValue(o, nameof(LargeData.Value10));
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int LargeGetExpression()
+    {
+        var o = large;
+        var get = largeExprGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int LargeGetFactory()
+    {
+        var o = large;
+        var get = largeFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? LargeGetReflectionCached()
+    {
+        var o = large;
+        var pi = largePi;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public object? LargeGetReflection()
+    {
+        var o = large;
+        object? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
+            v = pi.GetValue(o);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public void LargeSetDirect()
+    {
+        var o = large;
+        for (var i = 0; i < N; i++)
+        {
+            o.Value10 = 0;
+        }
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void LargeSetAccessorCached()
+    {
+        var o = large;
+        var accessor = largeAccessor;
+        for (var i = 0; i < N; i++)
+        {
+            accessor.SetValue(o, nameof(LargeData.Value10), 0);
+        }
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void LargeSetAccessor()
+    {
+        var o = large;
+        for (var i = 0; i < N; i++)
+        {
+            var accessor = AccessorRegistry.FindAccessor<LargeData>()!;
+            accessor.SetValue(o, nameof(LargeData.Value10), 0);
+        }
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void LargeSetExpression()
+    {
+        var o = large;
+        var set = largeExprSet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void LargeSetFactory()
+    {
+        var o = large;
+        var set = largeFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void LargeSetReflectionCached()
+    {
+        var o = large;
+        var pi = largePi;
+        for (var i = 0; i < N; i++)
+        {
+            pi.SetValue(o, 0);
+        }
+    }
+
+    [BenchmarkCategory("Large-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void LargeSetReflection()
+    {
+        var o = large;
+        for (var i = 0; i < N; i++)
+        {
+            var pi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
+            pi.SetValue(o, 0);
+        }
+    }
 }
 
 public static class ExpressionHelper
@@ -254,557 +1062,12 @@ public static class ExpressionHelper
     }
 }
 
-public class ScenarioConfig : ManualConfig
+[GenerateAccessor]
+public class Data
 {
-    public ScenarioConfig()
-    {
-        AddExporter(MarkdownExporter.GitHub);
-        AddColumn(
-            StatisticColumn.Mean,
-            StatisticColumn.Min,
-            StatisticColumn.Max,
-            StatisticColumn.P90,
-            StatisticColumn.Error,
-            StatisticColumn.StdDev);
-        AddDiagnoser(MemoryDiagnoser.Default);
-        AddJob(Job.MediumRun);
-    }
-}
+    public int Id { get; set; }
 
-// Compares the full access ladder across property and declaring-type kinds:
-// direct access, reflection (uncached / cached), and the IAccessor API (uncached / cached),
-// for int / string properties, a value type (struct), a large class, and a generic type.
-[Config(typeof(ScenarioConfig))]
-public class TypeScenarioBenchmark
-{
-    private const int N = 1000;
-
-    private static readonly Data ClassData = new() { Id = 1, Name = "abc" };
-    private static readonly object StructBoxed = new StructData { Id = 1, Name = "abc" };
-    private static readonly LargeData Large = new() { Value10 = 1 };
-    private static readonly GenericData<int> Generic = new() { Value = 1 };
-
-    private PropertyInfo intProperty = default!;
-    private PropertyInfo stringProperty = default!;
-    private PropertyInfo structProperty = default!;
-    private PropertyInfo largeProperty = default!;
-    private PropertyInfo genericProperty = default!;
-
-    private IAccessor dataAccessor = default!;
-    private IAccessor structAccessor = default!;
-    private IAccessor largeAccessor = default!;
-    private IAccessor genericAccessor = default!;
-
-    [GlobalSetup]
-    public void Setup()
-    {
-        intProperty = typeof(Data).GetProperty(nameof(Data.Id))!;
-        stringProperty = typeof(Data).GetProperty(nameof(Data.Name))!;
-        structProperty = typeof(StructData).GetProperty(nameof(StructData.Id))!;
-        largeProperty = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
-        genericProperty = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
-
-        dataAccessor = AccessorRegistry.FindAccessor<Data>()!;
-        structAccessor = AccessorRegistry.FindAccessor<StructData>()!;
-        largeAccessor = AccessorRegistry.FindAccessor<LargeData>()!;
-        genericAccessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
-    }
-
-    // Int getter
-    [BenchmarkCategory("IntGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntGetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            _ = ClassData.Id;
-        }
-    }
-
-    [BenchmarkCategory("IntGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntGetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(Data).GetProperty(nameof(Data.Id))!;
-            _ = pi.GetValue(ClassData);
-        }
-    }
-
-    [BenchmarkCategory("IntGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntGetReflectionCached()
-    {
-        var pi = intProperty;
-        for (var i = 0; i < N; i++)
-        {
-            _ = pi.GetValue(ClassData);
-        }
-    }
-
-    [BenchmarkCategory("IntGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntGetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
-            _ = accessor.GetValue(ClassData, nameof(Data.Id));
-        }
-    }
-
-    [BenchmarkCategory("IntGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntGetAccessorCached()
-    {
-        var accessor = dataAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            _ = accessor.GetValue(ClassData, nameof(Data.Id));
-        }
-    }
-
-    // Int setter
-    [BenchmarkCategory("IntSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntSetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            ClassData.Id = 0;
-        }
-    }
-
-    [BenchmarkCategory("IntSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntSetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(Data).GetProperty(nameof(Data.Id))!;
-            pi.SetValue(ClassData, 0);
-        }
-    }
-
-    [BenchmarkCategory("IntSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntSetReflectionCached()
-    {
-        var pi = intProperty;
-        for (var i = 0; i < N; i++)
-        {
-            pi.SetValue(ClassData, 0);
-        }
-    }
-
-    [BenchmarkCategory("IntSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntSetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
-            accessor.SetValue(ClassData, nameof(Data.Id), 0);
-        }
-    }
-
-    [BenchmarkCategory("IntSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void IntSetAccessorCached()
-    {
-        var accessor = dataAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            accessor.SetValue(ClassData, nameof(Data.Id), 0);
-        }
-    }
-
-    // String getter
-    [BenchmarkCategory("StringGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringGetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            _ = ClassData.Name;
-        }
-    }
-
-    [BenchmarkCategory("StringGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringGetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(Data).GetProperty(nameof(Data.Name))!;
-            _ = pi.GetValue(ClassData);
-        }
-    }
-
-    [BenchmarkCategory("StringGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringGetReflectionCached()
-    {
-        var pi = stringProperty;
-        for (var i = 0; i < N; i++)
-        {
-            _ = pi.GetValue(ClassData);
-        }
-    }
-
-    [BenchmarkCategory("StringGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringGetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
-            _ = accessor.GetValue(ClassData, nameof(Data.Name));
-        }
-    }
-
-    [BenchmarkCategory("StringGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringGetAccessorCached()
-    {
-        var accessor = dataAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            _ = accessor.GetValue(ClassData, nameof(Data.Name));
-        }
-    }
-
-    // String setter
-    [BenchmarkCategory("StringSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringSetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            ClassData.Name = "x";
-        }
-    }
-
-    [BenchmarkCategory("StringSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringSetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(Data).GetProperty(nameof(Data.Name))!;
-            pi.SetValue(ClassData, "x");
-        }
-    }
-
-    [BenchmarkCategory("StringSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringSetReflectionCached()
-    {
-        var pi = stringProperty;
-        for (var i = 0; i < N; i++)
-        {
-            pi.SetValue(ClassData, "x");
-        }
-    }
-
-    [BenchmarkCategory("StringSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringSetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
-            accessor.SetValue(ClassData, nameof(Data.Name), "x");
-        }
-    }
-
-    [BenchmarkCategory("StringSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StringSetAccessorCached()
-    {
-        var accessor = dataAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            accessor.SetValue(ClassData, nameof(Data.Name), "x");
-        }
-    }
-
-    // Struct getter (set requires a boxed instance; see IAccessor.SetValue)
-    [BenchmarkCategory("StructGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StructGetDirect()
-    {
-        var value = (StructData)StructBoxed;
-        for (var i = 0; i < N; i++)
-        {
-            _ = value.Id;
-        }
-    }
-
-    [BenchmarkCategory("StructGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StructGetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(StructData).GetProperty(nameof(StructData.Id))!;
-            _ = pi.GetValue(StructBoxed);
-        }
-    }
-
-    [BenchmarkCategory("StructGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StructGetReflectionCached()
-    {
-        var pi = structProperty;
-        for (var i = 0; i < N; i++)
-        {
-            _ = pi.GetValue(StructBoxed);
-        }
-    }
-
-    [BenchmarkCategory("StructGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StructGetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<StructData>()!;
-            _ = accessor.GetValue(StructBoxed, nameof(StructData.Id));
-        }
-    }
-
-    [BenchmarkCategory("StructGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void StructGetAccessorCached()
-    {
-        var accessor = structAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            _ = accessor.GetValue(StructBoxed, nameof(StructData.Id));
-        }
-    }
-
-    // Large class getter
-    [BenchmarkCategory("LargeGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeGetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            _ = Large.Value10;
-        }
-    }
-
-    [BenchmarkCategory("LargeGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeGetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
-            _ = pi.GetValue(Large);
-        }
-    }
-
-    [BenchmarkCategory("LargeGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeGetReflectionCached()
-    {
-        var pi = largeProperty;
-        for (var i = 0; i < N; i++)
-        {
-            _ = pi.GetValue(Large);
-        }
-    }
-
-    [BenchmarkCategory("LargeGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeGetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<LargeData>()!;
-            _ = accessor.GetValue(Large, nameof(LargeData.Value10));
-        }
-    }
-
-    [BenchmarkCategory("LargeGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeGetAccessorCached()
-    {
-        var accessor = largeAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            _ = accessor.GetValue(Large, nameof(LargeData.Value10));
-        }
-    }
-
-    // Large class setter
-    [BenchmarkCategory("LargeSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeSetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            Large.Value10 = 0;
-        }
-    }
-
-    [BenchmarkCategory("LargeSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeSetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
-            pi.SetValue(Large, 0);
-        }
-    }
-
-    [BenchmarkCategory("LargeSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeSetReflectionCached()
-    {
-        var pi = largeProperty;
-        for (var i = 0; i < N; i++)
-        {
-            pi.SetValue(Large, 0);
-        }
-    }
-
-    [BenchmarkCategory("LargeSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeSetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<LargeData>()!;
-            accessor.SetValue(Large, nameof(LargeData.Value10), 0);
-        }
-    }
-
-    [BenchmarkCategory("LargeSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void LargeSetAccessorCached()
-    {
-        var accessor = largeAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            accessor.SetValue(Large, nameof(LargeData.Value10), 0);
-        }
-    }
-
-    // Generic type getter
-    [BenchmarkCategory("GenericGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericGetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            _ = Generic.Value;
-        }
-    }
-
-    [BenchmarkCategory("GenericGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericGetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
-            _ = pi.GetValue(Generic);
-        }
-    }
-
-    [BenchmarkCategory("GenericGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericGetReflectionCached()
-    {
-        var pi = genericProperty;
-        for (var i = 0; i < N; i++)
-        {
-            _ = pi.GetValue(Generic);
-        }
-    }
-
-    [BenchmarkCategory("GenericGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericGetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
-            _ = accessor.GetValue(Generic, nameof(GenericData<int>.Value));
-        }
-    }
-
-    [BenchmarkCategory("GenericGet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericGetAccessorCached()
-    {
-        var accessor = genericAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            _ = accessor.GetValue(Generic, nameof(GenericData<int>.Value));
-        }
-    }
-
-    // Generic type setter
-    [BenchmarkCategory("GenericSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericSetDirect()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            Generic.Value = 0;
-        }
-    }
-
-    [BenchmarkCategory("GenericSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericSetReflection()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
-            pi.SetValue(Generic, 0);
-        }
-    }
-
-    [BenchmarkCategory("GenericSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericSetReflectionCached()
-    {
-        var pi = genericProperty;
-        for (var i = 0; i < N; i++)
-        {
-            pi.SetValue(Generic, 0);
-        }
-    }
-
-    [BenchmarkCategory("GenericSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericSetAccessor()
-    {
-        for (var i = 0; i < N; i++)
-        {
-            var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
-            accessor.SetValue(Generic, nameof(GenericData<int>.Value), 0);
-        }
-    }
-
-    [BenchmarkCategory("GenericSet")]
-    [Benchmark(OperationsPerInvoke = N)]
-    public void GenericSetAccessorCached()
-    {
-        var accessor = genericAccessor;
-        for (var i = 0; i < N; i++)
-        {
-            accessor.SetValue(Generic, nameof(GenericData<int>.Value), 0);
-        }
-    }
+    public string Name { get; set; } = default!;
 }
 
 [GenerateAccessor]
