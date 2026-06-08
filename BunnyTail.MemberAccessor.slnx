@@ -1,4 +1,13 @@
 <Solution>
+  <Folder Name="/Benchmark/">
+    <Project Path="Benchmark/Benchmark.csproj" />
+  </Folder>
+  <Folder Name="/Library/">
+    <Project Path="BunnyTail.MemberAccessor.Generator/BunnyTail.MemberAccessor.Generator.csproj" />
+    <Project Path="BunnyTail.MemberAccessor/BunnyTail.MemberAccessor.csproj">
+      <BuildDependency Project="BunnyTail.MemberAccessor.Generator/BunnyTail.MemberAccessor.Generator.csproj" />
+    </Project>
+  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitattributes" />
@@ -14,10 +23,7 @@
     <File Path="LICENSE" />
     <File Path="README.md" />
   </Folder>
-  <Project Path="BunnyTail.MemberAccessor/BunnyTail.MemberAccessor.csproj">
-    <BuildDependency Project="BunnyTail.MemberAccessor.Generator/BunnyTail.MemberAccessor.Generator.csproj" />
-  </Project>
-  <Project Path="BunnyTail.MemberAccessor.Generator/BunnyTail.MemberAccessor.Generator.csproj" />
-  <Project Path="BunnyTail.MemberAccessor.Tests/BunnyTail.MemberAccessor.Tests.csproj" />
-  <Project Path="Benchmark/Benchmark.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="BunnyTail.MemberAccessor.Tests/BunnyTail.MemberAccessor.Tests.csproj" />
+  </Folder>
 </Solution>
