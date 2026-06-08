@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class ConstructorAccessorTest
+public class ConstructorTest
 {
     [Fact]
     public void TestParameterlessConstructor()
