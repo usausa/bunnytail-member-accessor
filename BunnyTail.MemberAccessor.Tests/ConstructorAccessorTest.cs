@@ -47,6 +47,84 @@ public class ConstructorAccessorTest
     }
 
     [Fact]
+    public void TestFiveParameterConstructor()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = ctor.Create(1, 2, 3, 4, 5);
+
+        // Assert
+        Assert.Equal(1, instance.P1);
+        Assert.Equal(2, instance.P2);
+        Assert.Equal(3, instance.P3);
+        Assert.Equal(4, instance.P4);
+        Assert.Equal(5, instance.P5);
+    }
+
+    [Fact]
+    public void TestSixParameterConstructor()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = ctor.Create(1, 2, 3, 4, 5, 6);
+
+        // Assert
+        Assert.Equal(1, instance.P1);
+        Assert.Equal(2, instance.P2);
+        Assert.Equal(3, instance.P3);
+        Assert.Equal(4, instance.P4);
+        Assert.Equal(5, instance.P5);
+        Assert.Equal(6, instance.P6);
+    }
+
+    [Fact]
+    public void TestSevenParameterConstructor()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = ctor.Create(1, 2, 3, 4, 5, 6, 7);
+
+        // Assert
+        Assert.Equal(1, instance.P1);
+        Assert.Equal(2, instance.P2);
+        Assert.Equal(3, instance.P3);
+        Assert.Equal(4, instance.P4);
+        Assert.Equal(5, instance.P5);
+        Assert.Equal(6, instance.P6);
+        Assert.Equal(7, instance.P7);
+    }
+
+    [Fact]
+    public void TestEightParameterConstructor()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = ctor.Create(1, 2, 3, 4, 5, 6, 7, 8);
+
+        // Assert
+        Assert.Equal(1, instance.P1);
+        Assert.Equal(2, instance.P2);
+        Assert.Equal(3, instance.P3);
+        Assert.Equal(4, instance.P4);
+        Assert.Equal(5, instance.P5);
+        Assert.Equal(6, instance.P6);
+        Assert.Equal(7, instance.P7);
+        Assert.Equal(8, instance.P8);
+    }
+
+    [Fact]
     public void TestUnsupportedArityThrows()
     {
         // Arrange

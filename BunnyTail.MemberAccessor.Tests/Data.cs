@@ -93,6 +93,69 @@ public class CtorData2
     }
 }
 
+// Higher-arity constructor accessor test data (5-8 parameters)
+[GenerateAccessor]
+public class MultiArgCtorData
+{
+    public int P1 { get; }
+
+    public int P2 { get; }
+
+    public int P3 { get; }
+
+    public int P4 { get; }
+
+    public int P5 { get; }
+
+    public int P6 { get; }
+
+    public int P7 { get; }
+
+    public int P8 { get; }
+
+    public MultiArgCtorData(int p1, int p2, int p3, int p4, int p5)
+    {
+        P1 = p1;
+        P2 = p2;
+        P3 = p3;
+        P4 = p4;
+        P5 = p5;
+    }
+
+    public MultiArgCtorData(int p1, int p2, int p3, int p4, int p5, int p6)
+    {
+        P1 = p1;
+        P2 = p2;
+        P3 = p3;
+        P4 = p4;
+        P5 = p5;
+        P6 = p6;
+    }
+
+    public MultiArgCtorData(int p1, int p2, int p3, int p4, int p5, int p6, int p7)
+    {
+        P1 = p1;
+        P2 = p2;
+        P3 = p3;
+        P4 = p4;
+        P5 = p5;
+        P6 = p6;
+        P7 = p7;
+    }
+
+    public MultiArgCtorData(int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8)
+    {
+        P1 = p1;
+        P2 = p2;
+        P3 = p3;
+        P4 = p4;
+        P5 = p5;
+        P6 = p6;
+        P7 = p7;
+        P8 = p8;
+    }
+}
+
 // Same-arity constructor overload test data
 [GenerateAccessor]
 public class OverloadCtorData

@@ -23,6 +23,9 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private const string AccessorFactorySuffix = "_AccessorFactory";
     private const string ConstructorAccessorSuffix = "_ConstructorAccessor";
 
+    // Maximum constructor arity supported by IConstructor<T>.Create overloads.
+    private const int MaxConstructorArity = 8;
+
     // ------------------------------------------------------------
     // Initialize
     // ------------------------------------------------------------
@@ -99,9 +102,9 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 CanWrite(x.SetMethod)))
             .ToArray();
 
-        // Collect constructors (public, arity 0-4)
+        // Collect constructors (public, arity 0-8)
         var constructors = symbol.InstanceConstructors
-            .Where(static c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length <= 4)
+            .Where(static c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length <= MaxConstructorArity)
             .OrderBy(static c => c.Parameters.Length)
             .Select(static c => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(
                 c.Parameters.Select(static p => new ConstructorParameterModel(
@@ -547,7 +550,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.Indent()
             .Append("internal sealed class ")
             .AppendBy(type, BuildConstructorAccessorName)
-            .Append(" : global::BunnyTail.MemberAccessor.IConstructorAccessor<")
+            .Append(" : global::BunnyTail.MemberAccessor.IConstructor<")
             .Append(className)
             .Append('>')
             .NewLine();
@@ -571,32 +574,36 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.EndScope();
         builder.NewLine();
 
-        // Create<TArg>(TArg arg) - 1 arg
-        builder.Indent().Append("public ").Append(className).Append(" Create<TArg>(TArg arg)").NewLine();
-        builder.BeginScope();
-        BuildCreateBody(builder, className, byArity, 1);
-        builder.EndScope();
-        builder.NewLine();
-
-        // Create<TArg1, TArg2>(TArg1 arg1, TArg2 arg2) - 2 args
-        builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2>(TArg1 arg1, TArg2 arg2)").NewLine();
-        builder.BeginScope();
-        BuildCreateBody(builder, className, byArity, 2);
-        builder.EndScope();
-        builder.NewLine();
-
-        // Create<TArg1, TArg2, TArg3>
-        builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2, TArg3>(TArg1 arg1, TArg2 arg2, TArg3 arg3)").NewLine();
-        builder.BeginScope();
-        BuildCreateBody(builder, className, byArity, 3);
-        builder.EndScope();
-        builder.NewLine();
-
-        // Create<TArg1, TArg2, TArg3, TArg4>
-        builder.Indent().Append("public ").Append(className).Append(" Create<TArg1, TArg2, TArg3, TArg4>(TArg1 arg1, TArg2 arg2, TArg3 arg3, TArg4 arg4)").NewLine();
-        builder.BeginScope();
-        BuildCreateBody(builder, className, byArity, 4);
-        builder.EndScope();
+        // Create<TArg...>(TArg... arg...) - 1 to MaxConstructorArity args
+        for (var arity = 1; arity <= MaxConstructorArity; arity++)
+        {
+            builder.Indent().Append("public ").Append(className).Append(" Create<");
+            for (var i = 0; i < arity; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+                builder.Append(ArgTypeParameterName(arity, i));
+            }
+            builder.Append(">(");
+            for (var i = 0; i < arity; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(", ");
+                }
+                builder.Append(ArgTypeParameterName(arity, i)).Append(' ').Append(ArgName(arity, i));
+            }
+            builder.Append(')').NewLine();
+            builder.BeginScope();
+            BuildCreateBody(builder, className, byArity, arity);
+            builder.EndScope();
+            if (arity < MaxConstructorArity)
+            {
+                builder.NewLine();
+            }
+        }
 
         builder.EndScope();
     }

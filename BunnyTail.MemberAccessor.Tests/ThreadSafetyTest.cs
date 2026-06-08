@@ -44,7 +44,7 @@ public class ThreadSafetyTest
     public void TestConcurrentConstructorResolution()
     {
         // Arrange
-        var results = new ConcurrentBag<IConstructorAccessor<GenericHolder<long>>?>();
+        var results = new ConcurrentBag<IConstructor<GenericHolder<long>>?>();
 
         // Act
         Parallel.For(0, Parallelism, _ => results.Add(AccessorRegistry.FindConstructor<GenericHolder<long>>()));

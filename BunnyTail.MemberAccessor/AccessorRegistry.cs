@@ -27,7 +27,7 @@ public static class AccessorRegistry
     }
 
     // Registers a constructor accessor instance for a type.
-    public static void RegisterConstructor<T>(Type type, IConstructorAccessor<T> constructor)
+    public static void RegisterConstructor<T>(Type type, IConstructor<T> constructor)
     {
         ConstructorInstances[type] = constructor;
     }
@@ -153,13 +153,13 @@ public static class AccessorRegistry
         return FactoryInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), openFactory);
     }
 
-    // Finds an <see cref="IConstructorAccessor{T}"/> for the specified type.
-    public static IConstructorAccessor<T>? FindConstructor<T>()
+    // Finds an <see cref="IConstructor{T}"/> for the specified type.
+    public static IConstructor<T>? FindConstructor<T>()
     {
         var type = typeof(T);
         if (ConstructorInstances.TryGetValue(type, out var ctor))
         {
-            return (IConstructorAccessor<T>)ctor;
+            return (IConstructor<T>)ctor;
         }
 
         if (!type.IsGenericType)
@@ -174,6 +174,6 @@ public static class AccessorRegistry
         }
 
         var instance = ConstructorInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), factory);
-        return (IConstructorAccessor<T>)instance;
+        return (IConstructor<T>)instance;
     }
 }
