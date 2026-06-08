@@ -1,0 +1,3 @@
+<linker>
+  <assembly fullname="BunnyTail.MemberAccessor.AotTests" preserve="all" />
+</linker>

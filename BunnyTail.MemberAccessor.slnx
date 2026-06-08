@@ -24,6 +24,7 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="BunnyTail.MemberAccessor.AotTests/BunnyTail.MemberAccessor.AotTests.csproj" />
     <Project Path="BunnyTail.MemberAccessor.Tests/BunnyTail.MemberAccessor.Tests.csproj" />
   </Folder>
 </Solution>
