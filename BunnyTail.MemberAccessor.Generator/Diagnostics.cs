@@ -35,4 +35,12 @@ internal static class Diagnostics
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor UnsupportedConstructorArity { get; } = new(
+        id: "BTMA0005",
+        title: "Unsupported constructor arity",
+        messageFormat: "Type has a constructor with more than {1} parameters, which is not supported. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }

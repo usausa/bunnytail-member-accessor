@@ -103,8 +103,21 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .ToArray();
 
         // Collect constructors (public, arity 0-8)
-        var constructors = symbol.InstanceConstructors
-            .Where(static c => c.DeclaredAccessibility == Accessibility.Public && c.Parameters.Length <= MaxConstructorArity)
+        var publicConstructors = symbol.InstanceConstructors
+            .Where(static c => c.DeclaredAccessibility == Accessibility.Public)
+            .ToArray();
+
+        // A public constructor exceeding the supported arity cannot be generated; reject the whole type.
+        if (publicConstructors.Any(static c => c.Parameters.Length > MaxConstructorArity))
+        {
+            return Results.Error<TypeModel>(new DiagnosticInfo(
+                Diagnostics.UnsupportedConstructorArity,
+                context.TargetNode.GetLocation(),
+                symbol.Name,
+                MaxConstructorArity.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        var constructors = publicConstructors
             .OrderBy(static c => c.Parameters.Length)
             .Select(static c => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(
                 c.Parameters.Select(static p => new ConstructorParameterModel(
@@ -174,6 +187,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             !SymbolEqualityComparer.Default.Equals(openGenericSymbol, symbol.OriginalDefinition))
         {
             return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidAttributeLocation, syntax.GetLocation(), symbol.Name));
+        }
+
+        // The target type must be decorated with [GenerateAccessor]; otherwise its accessor classes are never generated.
+        if (!symbol.OriginalDefinition.GetAttributes().Any(static a => a.AttributeClass?.ToDisplayString() == GenerateAccessorAttributeName))
+        {
+            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.TypedAccessorTargetNotDecorated, syntax.GetLocation(), symbol.Name));
         }
 
         var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name)
