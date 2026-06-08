@@ -8,6 +8,7 @@ public class InitOnlyAccessorTest
         // Arrange
         var factory = AccessorRegistry.FindFactory<InitOnlyData>();
         Assert.NotNull(factory);
+
         var data = new InitOnlyData { Id = 1, Name = "abc" };
 
         // Act
@@ -33,7 +34,7 @@ public class InitOnlyAccessorTest
         Assert.NotNull(factory);
 
         // Act & Assert
-        // init-only setters cannot be assigned after initialization, so they are treated as read-only.
+        // init-only setters cannot be assigned after initialization, so they are treated as read-only
         Assert.Null(factory.CreateSetter<string>(nameof(InitOnlyData.Name)));
         Assert.Null(factory.CreateSetter(nameof(InitOnlyData.Name)));
     }
@@ -44,6 +45,7 @@ public class InitOnlyAccessorTest
         // Arrange
         var accessor = AccessorRegistry.FindAccessor<InitOnlyData>();
         Assert.NotNull(accessor);
+
         var data = new InitOnlyData { Id = 1, Name = "abc" };
 
         // Act & Assert
@@ -78,8 +80,10 @@ public class InitOnlyAccessorTest
         // Arrange
         var factory = AccessorRegistry.FindFactory<InitOnlyData>();
         Assert.NotNull(factory);
+
         var setId = factory.CreateSetter<int>(nameof(InitOnlyData.Id));
         Assert.NotNull(setId);
+
         var data = new InitOnlyData { Id = 1 };
 
         // Act

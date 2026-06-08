@@ -8,6 +8,7 @@ public class FactoryTest
         // Arrange
         var accessorFactory = AccessorRegistry.FindFactory<Data>();
         Assert.NotNull(accessorFactory);
+
         var getId = accessorFactory.CreateGetter<int>(nameof(Data.Id));
         var getName = accessorFactory.CreateGetter<string>(nameof(Data.Name));
         var setId = accessorFactory.CreateSetter<int>(nameof(Data.Id));
@@ -16,9 +17,10 @@ public class FactoryTest
         Assert.NotNull(getName);
         Assert.NotNull(setId);
         Assert.NotNull(setName);
+
         var data = new Data { Id = 123, Name = "abc" };
 
-        // Act & Assert (get)
+        // Act & Assert
         Assert.Equal(123, getId(data));
         Assert.Equal("abc", getName(data));
 
@@ -37,6 +39,7 @@ public class FactoryTest
         // Arrange
         var accessorFactory = AccessorRegistry.FindFactory<NullableData>();
         Assert.NotNull(accessorFactory);
+
         var getId = accessorFactory.CreateGetter<int?>(nameof(NullableData.Id));
         var getName = accessorFactory.CreateGetter<string?>(nameof(NullableData.Name));
         var setId = accessorFactory.CreateSetter<int?>(nameof(NullableData.Id));
@@ -45,9 +48,10 @@ public class FactoryTest
         Assert.NotNull(getName);
         Assert.NotNull(setId);
         Assert.NotNull(setName);
+
         var data = new NullableData { Id = 123, Name = "abc" };
 
-        // Act & Assert (get)
+        // Act & Assert
         Assert.Equal(123, getId(data));
         Assert.Equal("abc", getName(data));
 
@@ -76,6 +80,7 @@ public class FactoryTest
         var accessorFactory2 = AccessorRegistry.FindFactory<GenericData<string>>();
         Assert.NotNull(accessorFactory1);
         Assert.NotNull(accessorFactory2);
+
         var get1 = accessorFactory1.CreateGetter<int>(nameof(GenericData<>.Value));
         var set1 = accessorFactory1.CreateSetter<int>(nameof(GenericData<>.Value));
         var get2 = accessorFactory2.CreateGetter<string>(nameof(GenericData<>.Value));
@@ -84,9 +89,10 @@ public class FactoryTest
         Assert.NotNull(set1);
         Assert.NotNull(get2);
         Assert.NotNull(set2);
+
         var data1 = new GenericData<int> { Value = 123 };
 
-        // Act & Assert (get)
+        // Act & Assert
         Assert.Equal(123, get1(data1));
 
         // Act
@@ -116,6 +122,7 @@ public class FactoryTest
         var accessorFactory2 = AccessorRegistry.FindFactory<MultiGenericData<string, string>>();
         Assert.NotNull(accessorFactory1);
         Assert.NotNull(accessorFactory2);
+
         var get1 = accessorFactory1.CreateGetter<int>(nameof(MultiGenericData<,>.Value1));
         var set1 = accessorFactory1.CreateSetter<int>(nameof(MultiGenericData<,>.Value1));
         var get2 = accessorFactory2.CreateGetter<string>(nameof(MultiGenericData<,>.Value1));
@@ -124,9 +131,10 @@ public class FactoryTest
         Assert.NotNull(set1);
         Assert.NotNull(get2);
         Assert.NotNull(set2);
+
         var data1 = new MultiGenericData<int, int> { Value1 = 123 };
 
-        // Act & Assert (get)
+        // Act & Assert
         Assert.Equal(123, get1(data1));
 
         // Act
@@ -138,7 +146,7 @@ public class FactoryTest
         // Arrange
         var data2 = new MultiGenericData<string, string> { Value1 = "abc" };
 
-        // Act & Assert (get)
+        // Act & Assert
         Assert.Equal("abc", get2(data2));
 
         // Act

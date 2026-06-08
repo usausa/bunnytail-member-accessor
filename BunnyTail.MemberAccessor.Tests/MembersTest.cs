@@ -55,7 +55,7 @@ public class MembersTest
         Assert.NotNull(accessor);
         var data = new DerivedData { Id = 5, Name = "derived" };
 
-        // Act & Assert (get)
+        // Act & Assert
         Assert.Equal(5, accessor.GetValue(data, nameof(BaseData.Id)));
         Assert.Equal("derived", accessor.GetValue(data, nameof(DerivedData.Name)));
 

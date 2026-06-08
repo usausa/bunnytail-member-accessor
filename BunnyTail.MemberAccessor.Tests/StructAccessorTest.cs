@@ -8,6 +8,7 @@ public class StructAccessorTest
         // Arrange
         var accessor = AccessorRegistry.FindAccessor<StructData>();
         Assert.NotNull(accessor);
+
         object boxed = new StructData { Id = 10, Name = "test" };
 
         // Act & Assert
@@ -21,6 +22,7 @@ public class StructAccessorTest
         // Arrange
         var accessor = AccessorRegistry.FindAccessor<StructData>();
         Assert.NotNull(accessor);
+
         object boxed = new StructData { Id = 10, Name = "test" };
 
         // Act
@@ -40,11 +42,11 @@ public class StructAccessorTest
         Assert.NotNull(factory);
 
         // Act & Assert
-        // Typed setters cannot mutate value types (the delegate receives a copy), so null is returned.
+        // Typed setters cannot mutate value types (the delegate receives a copy), so null is returned
         Assert.Null(factory.CreateSetter<int>(nameof(StructData.Id)));
         Assert.Null(factory.CreateSetter<string>(nameof(StructData.Name)));
 
-        // Typed getter and the object-based setter (via boxed instance) still work.
+        // Typed getter and the object-based setter (via boxed instance) still work
         var getId = factory.CreateGetter<int>(nameof(StructData.Id));
         Assert.NotNull(getId);
 

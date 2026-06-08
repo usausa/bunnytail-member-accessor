@@ -10,6 +10,7 @@ public class NameMismatchTest
         // Arrange
         var accessor = AccessorRegistry.FindAccessor<Data>();
         Assert.NotNull(accessor);
+
         var data = new Data { Id = 1, Name = "abc" };
 
         // Act
@@ -25,6 +26,7 @@ public class NameMismatchTest
         // Arrange
         var accessor = AccessorRegistry.FindAccessor<Data>();
         Assert.NotNull(accessor);
+
         var data = new Data { Id = 1, Name = "abc" };
 
         // Act
