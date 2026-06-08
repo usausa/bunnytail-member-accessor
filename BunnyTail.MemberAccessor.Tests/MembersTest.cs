@@ -5,12 +5,14 @@ public class MembersTest
     [Fact]
     public void TestMembersDescriptors()
     {
+        // Arrange
         var factory = AccessorRegistry.FindFactory<Data>();
-
         Assert.NotNull(factory);
 
+        // Act
         var members = factory.Members;
 
+        // Assert
         Assert.NotNull(members);
         Assert.Equal(2, members.Count);
 
@@ -30,12 +32,14 @@ public class MembersTest
     [Fact]
     public void TestInheritedPropertiesIncluded()
     {
+        // Arrange
         var factory = AccessorRegistry.FindFactory<DerivedData>();
-
         Assert.NotNull(factory);
 
+        // Act
         var members = factory.Members;
 
+        // Assert
         Assert.NotNull(members);
 
         var names = members.Select(m => m.Name).ToArray();
@@ -46,29 +50,33 @@ public class MembersTest
     [Fact]
     public void TestInheritedPropertyAccess()
     {
+        // Arrange
         var accessor = AccessorRegistry.FindAccessor<DerivedData>();
-
         Assert.NotNull(accessor);
-
         var data = new DerivedData { Id = 5, Name = "derived" };
 
+        // Act & Assert (get)
         Assert.Equal(5, accessor.GetValue(data, nameof(BaseData.Id)));
         Assert.Equal("derived", accessor.GetValue(data, nameof(DerivedData.Name)));
 
+        // Act
         accessor.SetValue(data, nameof(BaseData.Id), 10);
 
+        // Assert
         Assert.Equal(10, data.Id);
     }
 
     [Fact]
     public void TestPublicInstancePropertiesOnly()
     {
+        // Arrange
         var factory = AccessorRegistry.FindFactory<FilterData>();
-
         Assert.NotNull(factory);
 
+        // Act
         var members = factory.Members;
 
+        // Assert
         Assert.NotNull(members);
 
         var names = members.Select(m => m.Name).ToArray();

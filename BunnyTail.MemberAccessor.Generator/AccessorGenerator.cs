@@ -93,8 +93,8 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         var properties = allProperties
             .Select(static x => new PropertyModel(
-                x.Name,
                 x.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                x.Name,
                 CanAccess(x.GetMethod),
                 CanWrite(x.SetMethod)))
             .ToArray();
@@ -105,15 +105,15 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .OrderBy(static c => c.Parameters.Length)
             .Select(static c => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(
                 c.Parameters.Select(static p => new ConstructorParameterModel(
-                    p.Name,
-                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat))).ToArray())))
+                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                    p.Name)).ToArray())))
             .ToArray();
 
         return Results.Success(new TypeModel(
             ns,
             symbol.GetClassName(),
-            symbol.TypeArguments.Length,
             symbol.IsValueType,
+            symbol.TypeArguments.Length,
             new EquatableArray<PropertyModel>(properties),
             new EquatableArray<ConstructorModel>(constructors)));
     }

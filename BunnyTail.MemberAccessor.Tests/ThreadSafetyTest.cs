@@ -10,13 +10,15 @@ public class ThreadSafetyTest
     [Fact]
     public void TestConcurrentAccessorResolution()
     {
+        // Arrange
         // GenericData<long> is not pre-registered, so the first concurrent batch races on the on-demand resolution path.
         var results = new ConcurrentBag<IAccessor?>();
 
+        // Act
         Parallel.For(0, Parallelism, _ => results.Add(AccessorRegistry.FindAccessor<GenericData<long>>()));
-
         var expected = AccessorRegistry.FindAccessor<GenericData<long>>();
 
+        // Assert
         Assert.NotNull(expected);
         Assert.Equal(Parallelism, results.Count);
         Assert.All(results, x => Assert.Same(expected, x));
@@ -25,12 +27,14 @@ public class ThreadSafetyTest
     [Fact]
     public void TestConcurrentFactoryResolution()
     {
+        // Arrange
         var results = new ConcurrentBag<IAccessorFactory<GenericData<long>>?>();
 
+        // Act
         Parallel.For(0, Parallelism, _ => results.Add(AccessorRegistry.FindFactory<GenericData<long>>()));
-
         var expected = AccessorRegistry.FindFactory<GenericData<long>>();
 
+        // Assert
         Assert.NotNull(expected);
         Assert.Equal(Parallelism, results.Count);
         Assert.All(results, x => Assert.Same(expected, x));
@@ -39,12 +43,14 @@ public class ThreadSafetyTest
     [Fact]
     public void TestConcurrentConstructorResolution()
     {
+        // Arrange
         var results = new ConcurrentBag<IConstructorAccessor<GenericHolder<long>>?>();
 
+        // Act
         Parallel.For(0, Parallelism, _ => results.Add(AccessorRegistry.FindConstructor<GenericHolder<long>>()));
-
         var expected = AccessorRegistry.FindConstructor<GenericHolder<long>>();
 
+        // Assert
         Assert.NotNull(expected);
         Assert.Equal(Parallelism, results.Count);
         Assert.All(results, x => Assert.Same(expected, x));
