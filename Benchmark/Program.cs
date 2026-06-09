@@ -104,7 +104,7 @@ public class AccessorBenchmark
         classIntPi = typeof(Data).GetProperty(nameof(Data.Id))!;
         classStringPi = typeof(Data).GetProperty(nameof(Data.Name))!;
         structPi = typeof(StructData).GetProperty(nameof(StructData.Id))!;
-        genericPi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
+        genericPi = typeof(GenericData<int>).GetProperty(nameof(GenericData<>.Value))!;
         largePi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
 
         dataAccessor = AccessorRegistry.FindAccessor<Data>()!;
@@ -119,8 +119,8 @@ public class AccessorBenchmark
         classStringFactorySet = dataFactory.CreateSetter<string>(nameof(Data.Name))!;
         structFactoryGet = AccessorRegistry.FindFactory<StructData>()!.CreateGetter<int>(nameof(StructData.Id))!;
         var genericFactory = AccessorRegistry.FindFactory<GenericData<int>>()!;
-        genericFactoryGet = genericFactory.CreateGetter<int>(nameof(GenericData<int>.Value))!;
-        genericFactorySet = genericFactory.CreateSetter<int>(nameof(GenericData<int>.Value))!;
+        genericFactoryGet = genericFactory.CreateGetter<int>(nameof(GenericData<>.Value))!;
+        genericFactorySet = genericFactory.CreateSetter<int>(nameof(GenericData<>.Value))!;
         var largeFactory = AccessorRegistry.FindFactory<LargeData>()!;
         largeFactoryGet = largeFactory.CreateGetter<int>(nameof(LargeData.Value10))!;
         largeFactorySet = largeFactory.CreateSetter<int>(nameof(LargeData.Value10))!;
@@ -130,8 +130,8 @@ public class AccessorBenchmark
         classStringExprGet = ExpressionHelper.CreateGetter<Data, string>(nameof(Data.Name));
         classStringExprSet = ExpressionHelper.CreateSetter<Data, string>(nameof(Data.Name));
         structExprGet = ExpressionHelper.CreateGetter<StructData, int>(nameof(StructData.Id));
-        genericExprGet = ExpressionHelper.CreateGetter<GenericData<int>, int>(nameof(GenericData<int>.Value));
-        genericExprSet = ExpressionHelper.CreateSetter<GenericData<int>, int>(nameof(GenericData<int>.Value));
+        genericExprGet = ExpressionHelper.CreateGetter<GenericData<int>, int>(nameof(GenericData<>.Value));
+        genericExprSet = ExpressionHelper.CreateSetter<GenericData<int>, int>(nameof(GenericData<>.Value));
         largeExprGet = ExpressionHelper.CreateGetter<LargeData, int>(nameof(LargeData.Value10));
         largeExprSet = ExpressionHelper.CreateSetter<LargeData, int>(nameof(LargeData.Value10));
     }
@@ -692,7 +692,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            v = accessor.GetValue(o, nameof(GenericData<int>.Value));
+            v = accessor.GetValue(o, nameof(GenericData<>.Value));
         }
         return v;
     }
@@ -706,7 +706,7 @@ public class AccessorBenchmark
         for (var i = 0; i < N; i++)
         {
             var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
-            v = accessor.GetValue(o, nameof(GenericData<int>.Value));
+            v = accessor.GetValue(o, nameof(GenericData<>.Value));
         }
         return v;
     }
@@ -761,7 +761,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
+            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<>.Value))!;
             v = pi.GetValue(o);
         }
         return v;
@@ -786,7 +786,7 @@ public class AccessorBenchmark
         var accessor = genericAccessor;
         for (var i = 0; i < N; i++)
         {
-            accessor.SetValue(o, nameof(GenericData<int>.Value), 0);
+            accessor.SetValue(o, nameof(GenericData<>.Value), 0);
         }
     }
 
@@ -798,7 +798,7 @@ public class AccessorBenchmark
         for (var i = 0; i < N; i++)
         {
             var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
-            accessor.SetValue(o, nameof(GenericData<int>.Value), 0);
+            accessor.SetValue(o, nameof(GenericData<>.Value), 0);
         }
     }
 
@@ -845,7 +845,7 @@ public class AccessorBenchmark
         var o = generic;
         for (var i = 0; i < N; i++)
         {
-            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<int>.Value))!;
+            var pi = typeof(GenericData<int>).GetProperty(nameof(GenericData<>.Value))!;
             pi.SetValue(o, 0);
         }
     }
