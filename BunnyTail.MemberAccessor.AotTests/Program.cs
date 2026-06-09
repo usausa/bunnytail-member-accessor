@@ -147,11 +147,11 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(accStr is not null, "FindAccessor<GenericData<string>> returned null");
 
     var di = new GenericData<int> { Value = 10 };
-    accInt!.SetValue(di, nameof(GenericData<int>.Value), 20);
+    accInt!.SetValue(di, nameof(GenericData<>.Value), 20);
     Assert(di.Value == 20, "Generic<int> SetValue");
 
     var ds = new GenericData<string> { Value = "a" };
-    Assert(Equals(accStr!.GetValue(ds, nameof(GenericData<string>.Value)), "a"), "Generic<string> GetValue");
+    Assert(Equals(accStr!.GetValue(ds, nameof(GenericData<>.Value)), "a"), "Generic<string> GetValue");
     Console.WriteLine("  [OK] Pre-registered closed generic accessor");
 }
 
