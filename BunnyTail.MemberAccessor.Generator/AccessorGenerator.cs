@@ -46,9 +46,18 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 static (context, _) => GetClosedGenericModel(context))
             .Collect();
 
+        context.RegisterSourceOutput(
+            typeProvider.Combine(closedGenericProvider),
+            static (context, provider) => ReportDiagnostics(context, provider.Left, provider.Right));
+
+        var models = typeProvider.SelectMany(static (types, _) => types.SelectValue().ToImmutableArray());
+        context.RegisterImplementationSourceOutput(
+            models,
+            static (context, type) => ExecuteClass(context, type));
+
         context.RegisterImplementationSourceOutput(
             typeProvider.Combine(closedGenericProvider),
-            static (context, provider) => Execute(context, provider.Left, provider.Right));
+            static (context, provider) => ExecuteRegistry(context, provider.Left, provider.Right));
     }
 
     // ------------------------------------------------------------
@@ -112,7 +121,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             return Results.Error<TypeModel>(new DiagnosticInfo(
                 Diagnostics.UnsupportedConstructorArity,
-                context.TargetNode.GetLocation(),
+                ((TypeDeclarationSyntax)context.TargetNode).Identifier.GetLocation(),
                 symbol.Name,
                 MaxConstructorArity.ToString(CultureInfo.InvariantCulture)));
         }
@@ -211,7 +220,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     // Generator
     // ------------------------------------------------------------
 
-    private static void Execute(SourceProductionContext context, ImmutableArray<Result<TypeModel>> types, ImmutableArray<EquatableArray<Result<ClosedGenericModel>>> closedGenerics)
+    private static void ReportDiagnostics(SourceProductionContext context, ImmutableArray<Result<TypeModel>> types, ImmutableArray<EquatableArray<Result<ClosedGenericModel>>> closedGenerics)
     {
         foreach (var info in types.SelectError())
         {
@@ -222,11 +231,8 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             context.ReportDiagnostic(info);
         }
 
-        var targetTypes = types.SelectValue().ToList();
-        var closedTypes = closedGenerics.SelectMany(static x => x.SelectValue()).ToList();
-
         // BTMA0003: no readable or writable properties
-        foreach (var type in targetTypes)
+        foreach (var type in types.SelectValue())
         {
             if (!type.Properties.Any(static x => x.CanRead || x.CanWrite))
             {
@@ -237,25 +243,29 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                     type.ClassName));
             }
         }
+    }
+
+    private static void ExecuteClass(SourceProductionContext context, TypeModel type)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
 
         var builder = new SourceBuilder();
-        foreach (var type in targetTypes)
-        {
-            context.CancellationToken.ThrowIfCancellationRequested();
+        BuildClassSource(builder, type);
 
-            builder.Clear();
-            BuildClassSource(builder, type);
+        var filename = MakeFilename(type.Namespace, type.ClassName);
+        context.AddSource(filename, SourceText.From(builder.ToString(), Encoding.UTF8));
+    }
 
-            var filename = MakeFilename(type.Namespace, type.ClassName);
-            var source = builder.ToString();
-            context.AddSource(filename, SourceText.From(source, Encoding.UTF8));
-        }
+    private static void ExecuteRegistry(SourceProductionContext context, ImmutableArray<Result<TypeModel>> types, ImmutableArray<EquatableArray<Result<ClosedGenericModel>>> closedGenerics)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
 
-        builder.Clear();
+        var targetTypes = types.SelectValue().ToList();
+        var closedTypes = closedGenerics.SelectMany(static x => x.SelectValue()).ToList();
+
+        var builder = new SourceBuilder();
         BuildRegistrySource(builder, targetTypes, closedTypes);
-        context.AddSource(
-            "AccessorInitializer.g.cs",
-            SourceText.From(builder.ToString(), Encoding.UTF8));
+        context.AddSource("AccessorInitializer.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
     }
 
     private static void BuildClassSource(SourceBuilder builder, TypeModel type)
