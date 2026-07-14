@@ -75,6 +75,14 @@ public static class AccessorRegistry
 #pragma warning restore SA1401
     }
 
+    private static class ConstructorCache<T>
+    {
+#pragma warning disable SA1401 // Field should be private
+        // ReSharper disable once StaticMemberInGenericType
+        internal static IConstructor<T>? Instance;
+#pragma warning restore SA1401
+    }
+
     // ------------------------------------------------------------
     // Lookup
     // ------------------------------------------------------------
@@ -156,10 +164,21 @@ public static class AccessorRegistry
     // Finds an <see cref="IConstructor{T}"/> for the specified type.
     public static IConstructor<T>? FindConstructor<T>()
     {
-        var type = typeof(T);
+        if (ConstructorCache<T>.Instance is { } cached)
+        {
+            return cached;
+        }
+
+        var result = (IConstructor<T>?)FindConstructorCore(typeof(T));
+        ConstructorCache<T>.Instance = result;
+        return result;
+    }
+
+    private static object? FindConstructorCore(Type type)
+    {
         if (ConstructorInstances.TryGetValue(type, out var ctor))
         {
-            return (IConstructor<T>)ctor;
+            return ctor;
         }
 
         if (!type.IsGenericType)
@@ -173,7 +192,6 @@ public static class AccessorRegistry
             return null;
         }
 
-        var instance = ConstructorInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), factory);
-        return (IConstructor<T>)instance;
+        return ConstructorInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), factory);
     }
 }

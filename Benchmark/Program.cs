@@ -64,6 +64,9 @@ public class AccessorBenchmark
     private PropertyInfo genericPi = default!;
     private PropertyInfo largePi = default!;
 
+    // Cached IConstructor
+    private IConstructor<Data> constructorCached = default!;
+
     // Cached IAccessor (object, name-based)
     private IAccessor dataAccessor = default!;
     private IAccessor structAccessor = default!;
@@ -107,6 +110,7 @@ public class AccessorBenchmark
         genericPi = typeof(GenericData<int>).GetProperty(nameof(GenericData<>.Value))!;
         largePi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
 
+        constructorCached = AccessorRegistry.FindConstructor<Data>()!;
         dataAccessor = AccessorRegistry.FindAccessor<Data>()!;
         structAccessor = AccessorRegistry.FindAccessor<StructData>()!;
         genericAccessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
@@ -1032,6 +1036,37 @@ public class AccessorBenchmark
             var pi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
             pi.SetValue(o, 0);
         }
+    }
+
+    // ------------------------------------------------------------
+    // Constructor (FindConstructor<T> hot-path lookup)
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("Constructor-Find")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public IConstructor<Data>? ConstructorFindCached()
+    {
+        var ctor = constructorCached;
+        IConstructor<Data>? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = ctor;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Constructor-Find")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public IConstructor<Data>? ConstructorFind()
+    {
+        var o = classData;
+        IConstructor<Data>? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = AccessorRegistry.FindConstructor<Data>();
+            _ = o;
+        }
+        return v;
     }
 }
 
