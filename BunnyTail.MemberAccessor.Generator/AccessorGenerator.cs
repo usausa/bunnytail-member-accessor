@@ -148,7 +148,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         return (method is not null) && (method.DeclaredAccessibility == Accessibility.Public);
     }
 
-    // init-only setters cannot be assigned outside of object initialization, so they are treated as read-only.
+    // init-only setters cannot be assigned outside of object initialization, so they are treated as read-only
     private static bool CanWrite(IMethodSymbol? method)
     {
         return (method is not null) && (method.DeclaredAccessibility == Accessibility.Public) && !method.IsInitOnly;
@@ -198,7 +198,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidAttributeLocation, syntax.GetLocation(), symbol.Name));
         }
 
-        // The target type must be decorated with [GenerateAccessor]; otherwise its accessor classes are never generated.
+        // The target type must be decorated with [GenerateAccessor]
         if (!symbol.OriginalDefinition.GetAttributes().Any(static a => a.AttributeClass?.ToDisplayString() == GenerateAccessorAttributeName))
         {
             return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.TypedAccessorTargetNotDecorated, syntax.GetLocation(), symbol.Name));
@@ -231,16 +231,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             context.ReportDiagnostic(info);
         }
 
-        // BTMA0003: no readable or writable properties
+        // No readable or writable properties
         foreach (var type in types.SelectValue())
         {
             if (!type.Properties.Any(static x => x.CanRead || x.CanWrite))
             {
-                // We can't recover a location here easily; emit at null location
-                context.ReportDiagnostic(Diagnostic.Create(
-                    Diagnostics.NoAccessibleMembers,
-                    Location.None,
-                    type.ClassName));
+                context.ReportDiagnostic(Diagnostic.Create(Diagnostics.NoAccessibleMembers, Location.None, type.ClassName));
             }
         }
     }
@@ -363,8 +359,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             if (type.IsValueType)
             {
-                // Value types: unbox, modify, box back not possible in place. We use ref via Unsafe for structs stored as object.
-                // For simplicity, we cast - note this only works if callers hold a boxed struct reference.
+                // Value types: unbox, modify, box back not possible in place. We use ref via Unsafe for structs stored as object
                 builder.Indent()
                     .Append("// Note: for value types the object must be a boxed instance; modifications affect the boxed copy.")
                     .NewLine();
@@ -547,8 +542,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.BeginScope();
         if (type.IsValueType)
         {
-            // Typed setters cannot mutate value types (the delegate would receive a copy);
-            // use IAccessor.SetValue with a boxed instance instead.
+            // Typed setters cannot mutate value type, use IAccessor.SetValue with a boxed instance instead
             builder.Indent().Append("return null;").NewLine();
         }
         else
@@ -585,7 +579,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
-        // Group by arity; multiple constructors may share an arity and are disambiguated by argument type.
+        // Group by arity; multiple constructors may share an arity and are disambiguated by argument type
         var byArity = constructors.GroupBy(static c => c.Parameters.Count)
             .ToDictionary(static g => g.Key, static g => g.ToArray());
 
@@ -649,7 +643,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             return;
         }
 
-        // Single constructor for the arity: bind directly (preserves implicit-conversion behavior).
+        // Single constructor for the arity: bind directly (preserves implicit-conversion behavior)
         if (constructors.Length == 1)
         {
             BuildNewExpression(builder, className, constructors[0], arity);
@@ -736,7 +730,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             if (type.TypeArgumentCount == 0)
             {
-                // Non-generic: register instances directly (AOT-safe, no Activator)
+                // Non-generic register instances directly (AOT-safe, no Activator)
                 builder
                     .Indent()
                     .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterFactory(typeof(")
@@ -765,8 +759,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             }
             else
             {
-                // Open generic: register open-generic factory delegate + pre-registered closed types
-                // Pre-registered closed types from [TypedAccessor]
+                // Open generic register open-generic factory delegate + pre-registered closed types
                 var namePart = type.ClassName.AsSpan(0, type.ClassName.IndexOf('<') + 1);
                 foreach (var closedType in closedTypes)
                 {
@@ -852,7 +845,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     }
 
     // ------------------------------------------------------------
-    // Helper: name builders
+    // Helper
     // ------------------------------------------------------------
 
     private static void BuildAccessorName(SourceBuilder builder, TypeModel model)
