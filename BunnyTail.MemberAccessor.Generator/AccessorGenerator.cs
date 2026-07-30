@@ -71,9 +71,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         var symbol = (INamedTypeSymbol)context.TargetSymbol;
 
-        var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name)
-            ? string.Empty
-            : symbol.ContainingNamespace.ToDisplayString();
+        var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name) ? string.Empty : symbol.ContainingNamespace.ToDisplayString();
 
         // Collect public instance properties including inherited ones
         var allProperties = new List<IPropertySymbol>();
@@ -85,12 +83,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             foreach (var member in current.GetMembers().OfType<IPropertySymbol>())
             {
                 // Public instance properties only (exclude static members, indexers, and properties with no public accessor)
-                if (member.IsStatic || member.IsIndexer)
-                {
-                    continue;
-                }
-
-                if (!CanAccess(member.GetMethod) && !CanAccess(member.SetMethod))
+                if (member.IsStatic || member.IsIndexer || (!CanAccess(member.GetMethod) && !CanAccess(member.SetMethod)))
                 {
                     continue;
                 }
@@ -111,12 +104,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 CanWrite(x.SetMethod)))
             .ToArray();
 
-        // Collect constructors (public, arity 0-8)
+        // Collect constructors
         var publicConstructors = symbol.InstanceConstructors
             .Where(static c => c.DeclaredAccessibility == Accessibility.Public)
             .ToArray();
 
-        // A public constructor exceeding the supported arity cannot be generated; reject the whole type.
+        // A public constructor exceeding the supported arity cannot be generated
         if (publicConstructors.Any(static c => c.Parameters.Length > MaxConstructorArity))
         {
             return Results.Error<TypeModel>(new DiagnosticInfo(
@@ -160,24 +153,23 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         if (context.TargetSymbol is ISourceAssemblySymbol assemblySymbol)
         {
             // ReSharper disable once LoopCanBeConvertedToQuery
-            foreach (var attributeData in assemblySymbol.GetAttributes().Where(Predicate))
+            foreach (var data in assemblySymbol.GetAttributes().Where(Predicate))
             {
-                list.Add(GetClosedGenericModel(context.TargetNode, null, attributeData));
+                list.Add(GetClosedGenericModel(context.TargetNode, null, data));
             }
         }
         else if (context.TargetSymbol is INamedTypeSymbol classSymbol)
         {
             // ReSharper disable once LoopCanBeConvertedToQuery
-            foreach (var attributeData in classSymbol.GetAttributes().Where(Predicate))
+            foreach (var data in classSymbol.GetAttributes().Where(Predicate))
             {
-                list.Add(GetClosedGenericModel(context.TargetNode, classSymbol.OriginalDefinition, attributeData));
+                list.Add(GetClosedGenericModel(context.TargetNode, classSymbol.OriginalDefinition, data));
             }
         }
 
         return new EquatableArray<Result<ClosedGenericModel>>(list.ToArray());
 
-        static bool Predicate(AttributeData attributeData) =>
-            attributeData.AttributeClass?.ToDisplayString() == TypedAccessorAttributeName;
+        static bool Predicate(AttributeData data) => data.AttributeClass?.ToDisplayString() == TypedAccessorAttributeName;
     }
 
     private static Result<ClosedGenericModel> GetClosedGenericModel(SyntaxNode syntax, INamedTypeSymbol? openGenericSymbol, AttributeData attributeData)
@@ -198,16 +190,13 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidAttributeLocation, syntax.GetLocation(), symbol.Name));
         }
 
-        // The target type must be decorated with [GenerateAccessor]
+        // The target type must be decorated with GenerateAccessorAttribute
         if (!symbol.OriginalDefinition.GetAttributes().Any(static a => a.AttributeClass?.ToDisplayString() == GenerateAccessorAttributeName))
         {
             return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.TypedAccessorTargetNotDecorated, syntax.GetLocation(), symbol.Name));
         }
 
-        var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name)
-            ? string.Empty
-            : symbol.ContainingNamespace.ToDisplayString();
-
+        var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name) ? string.Empty : symbol.ContainingNamespace.ToDisplayString();
         var typeArguments = symbol.TypeArguments.Select(static x => x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).ToArray();
 
         return Results.Success(new ClosedGenericModel(
@@ -276,19 +265,19 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var writableProperties = properties.Where(static x => x.CanWrite).ToArray();
         var constructors = type.Constructors;
 
-        // namespace
+        // Namespace
         if (!String.IsNullOrEmpty(type.Namespace))
         {
             builder.Namespace(type.Namespace);
             builder.NewLine();
         }
 
-        // accessor
+        // Accessor
         BuildAccessorSource(builder, type, className, readableProperties, writableProperties);
 
         builder.NewLine();
 
-        // factory
+        // Factory
         BuildFactorySource(builder, type, className, properties, readableProperties, writableProperties);
 
         if (constructors.Count > 0)
@@ -300,7 +289,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private static void BuildAccessorSource(SourceBuilder builder, TypeModel type, string className, PropertyModel[] readableProperties, PropertyModel[] writableProperties)
     {
-        // class
+        // Class
         builder.Indent()
             .Append("internal sealed class ")
             .AppendBy(type, BuildAccessorName)
@@ -308,7 +297,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
-        // get
+        // Getter
         builder.Indent()
             .Append("public object? GetValue(object obj, string name)")
             .NewLine();
@@ -344,7 +333,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         builder.NewLine();
 
-        // set
+        // Setter
         builder.Indent()
             .Append("public void SetValue(object obj, string name, object? value)")
             .NewLine();
@@ -579,9 +568,8 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.BeginScope();
 
-        // Group by arity; multiple constructors may share an arity and are disambiguated by argument type
-        var byArity = constructors.GroupBy(static c => c.Parameters.Count)
-            .ToDictionary(static g => g.Key, static g => g.ToArray());
+        // Group by arity
+        var byArity = constructors.GroupBy(static c => c.Parameters.Count).ToDictionary(static g => g.Key, static g => g.ToArray());
 
         // Create() - 0 args
         builder.Indent().Append("public ").Append(className).Append(" Create()").NewLine();
@@ -650,7 +638,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             return;
         }
 
-        // Multiple constructors share the arity: select by exact argument type at runtime.
+        // Multiple constructors share the arity: select by exact argument type at runtime
         foreach (var ctor in constructors)
         {
             builder.Indent().Append("if (");
@@ -700,14 +688,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.EnableNullable();
         builder.NewLine();
 
-        // class
+        // Class
         builder
             .Indent()
             .Append("internal static class AccessorFactoryInitializer")
             .NewLine();
         builder.BeginScope();
 
-        // method
+        // Method
         builder
             .Indent()
             .Append("[global::System.Runtime.CompilerServices.ModuleInitializer]")
@@ -844,10 +832,6 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.EndScope();
     }
 
-    // ------------------------------------------------------------
-    // Helper
-    // ------------------------------------------------------------
-
     private static void BuildAccessorName(SourceBuilder builder, TypeModel model)
     {
         var index = model.ClassName.IndexOf('<');
@@ -906,8 +890,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
         var index = model.ClassName.IndexOf('<');
-        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index))
-               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
     }
 
     private static void BuildRegistryAccessorName(SourceBuilder builder, TypeModel model)
@@ -929,8 +912,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
         var index = model.ClassName.IndexOf('<');
-        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(AccessorSuffix)
-               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(AccessorSuffix).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
     }
 
     private static void BuildRegistryFactoryName(SourceBuilder builder, TypeModel model)
@@ -952,8 +934,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
         var index = model.ClassName.IndexOf('<');
-        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(AccessorFactorySuffix)
-               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(AccessorFactorySuffix).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
     }
 
     private static void BuildRegistryConstructorAccessorName(SourceBuilder builder, TypeModel model)
@@ -975,8 +956,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.AppendBy(model.Namespace, BuildNamespace);
         var index = model.ClassName.IndexOf('<');
-        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(ConstructorAccessorSuffix)
-               .AppendBy(model.TypeArgumentCount, BuildGenericParameter);
+        builder.Append(index < 0 ? model.ClassName : model.ClassName.Substring(0, index)).Append(ConstructorAccessorSuffix).AppendBy(model.TypeArgumentCount, BuildGenericParameter);
     }
 
     private static void BuildRegistryTargetName(SourceBuilder builder, ClosedGenericModel model)
@@ -1027,6 +1007,10 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
         builder.Append('>');
     }
+
+    // ------------------------------------------------------------
+    // Helper
+    // ------------------------------------------------------------
 
     private static string MakeFilename(string ns, string className)
     {
