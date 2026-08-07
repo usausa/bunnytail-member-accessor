@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/Benchmark/">
-    <Project Path="Benchmark/Benchmark.csproj" />
+    <Project Path="Benchmark/Benchmark.csproj" DefaultStartup="true" />
   </Folder>
   <Folder Name="/Library/">
     <Project Path="BunnyTail.MemberAccessor.Generator/BunnyTail.MemberAccessor.Generator.csproj" />
