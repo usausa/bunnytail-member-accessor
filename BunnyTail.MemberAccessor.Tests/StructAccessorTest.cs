@@ -35,22 +35,62 @@ public class StructAccessorTest
     }
 
     [Fact]
-    public void TestStructTypedSetterReturnsNull()
+    public void TestStructTypedGetter()
     {
         // Arrange
         var factory = AccessorRegistry.FindFactory<StructData>();
         Assert.NotNull(factory);
 
-        // Act & Assert
-        // Typed setters cannot mutate value types (the delegate receives a copy), so null is returned
-        Assert.Null(factory.CreateSetter<int>(nameof(StructData.Id)));
-        Assert.Null(factory.CreateSetter<string>(nameof(StructData.Name)));
-
-        // Typed getter and the object-based setter (via boxed instance) still work
         var getId = factory.CreateGetter<int>(nameof(StructData.Id));
         Assert.NotNull(getId);
 
+        var data = new StructData { Id = 10, Name = "test" };
+
+        // Act & Assert
+        Assert.Equal(10, getId(ref data));
+    }
+
+    [Fact]
+    public void TestStructTypedSetter()
+    {
+        // Arrange
+        var factory = AccessorRegistry.FindFactory<StructData>();
+        Assert.NotNull(factory);
+
+        // ref-based setters mutate the value type in place (no boxing required)
+        var setId = factory.CreateSetter<int>(nameof(StructData.Id));
+        var setName = factory.CreateSetter<string>(nameof(StructData.Name));
+        Assert.NotNull(setId);
+        Assert.NotNull(setName);
+
+        var data = new StructData { Id = 10, Name = "test" };
+
+        // Act
+        setId(ref data, 99);
+        setName(ref data, "updated");
+
+        // Assert
+        Assert.Equal(99, data.Id);
+        Assert.Equal("updated", data.Name);
+    }
+
+    [Fact]
+    public void TestStructObjectSetter()
+    {
+        // Arrange
+        var factory = AccessorRegistry.FindFactory<StructData>();
+        Assert.NotNull(factory);
+
+        // Object-based setter mutates the boxed instance
         var setId = factory.CreateSetter(nameof(StructData.Id));
         Assert.NotNull(setId);
+
+        object boxed = new StructData { Id = 10, Name = "test" };
+
+        // Act
+        setId(boxed, 99);
+
+        // Assert
+        Assert.Equal(99, ((StructData)boxed).Id);
     }
 }

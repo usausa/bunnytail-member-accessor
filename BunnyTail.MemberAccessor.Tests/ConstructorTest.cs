@@ -125,6 +125,51 @@ public class ConstructorTest
     }
 
     [Fact]
+    public void TestNineParameterConstructor()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<WideCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = ctor.Create(1, 2, 3, 4, 5, 6, 7, 8, 9);
+
+        // Assert
+        Assert.Equal(1, instance.P1);
+        Assert.Equal(5, instance.P5);
+        Assert.Equal(9, instance.P9);
+        Assert.Equal(0, instance.P16);
+    }
+
+    [Fact]
+    public void TestSixteenParameterConstructor()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<WideCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = ctor.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+
+        // Assert
+        Assert.Equal(1, instance.P1);
+        Assert.Equal(8, instance.P8);
+        Assert.Equal(9, instance.P9);
+        Assert.Equal(16, instance.P16);
+    }
+
+    [Fact]
+    public void TestWideUnsupportedArityThrows()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor<WideCtorData>();
+        Assert.NotNull(ctor);
+
+        // Act & Assert
+        Assert.Throws<NotSupportedException>(() => ctor.Create(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+    }
+
+    [Fact]
     public void TestUnsupportedArityThrows()
     {
         // Arrange

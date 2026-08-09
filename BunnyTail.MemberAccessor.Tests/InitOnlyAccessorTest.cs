@@ -16,7 +16,7 @@ public class InitOnlyAccessorTest
 
         // Assert
         Assert.NotNull(getName);
-        Assert.Equal("abc", getName(data));
+        Assert.Equal("abc", getName(ref data));
 
         // Act
         var accessor = AccessorRegistry.FindAccessor<InitOnlyData>();
@@ -87,7 +87,7 @@ public class InitOnlyAccessorTest
         var data = new InitOnlyData { Id = 1 };
 
         // Act
-        setId(data, 99);
+        setId(ref data, 99);
 
         // Assert
         Assert.Equal(99, data.Id);

@@ -19,12 +19,14 @@ public class MembersTest
         var idMember = members.FirstOrDefault(m => m.Name == nameof(Data.Id));
         Assert.NotNull(idMember);
         Assert.Equal(typeof(int), idMember.Type);
+        Assert.Equal(MemberKind.Property, idMember.Kind);
         Assert.True(idMember.CanRead);
         Assert.True(idMember.CanWrite);
 
         var nameMember = members.FirstOrDefault(m => m.Name == nameof(Data.Name));
         Assert.NotNull(nameMember);
         Assert.Equal(typeof(string), nameMember.Type);
+        Assert.Equal(MemberKind.Property, nameMember.Kind);
         Assert.True(nameMember.CanRead);
         Assert.True(nameMember.CanWrite);
     }

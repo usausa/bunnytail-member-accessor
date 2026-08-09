@@ -9,9 +9,9 @@ public interface IAccessorFactory
     Action<object, object?>? CreateSetter(string name);
 }
 
-public interface IAccessorFactory<in T> : IAccessorFactory
+public interface IAccessorFactory<T> : IAccessorFactory
 {
-    Func<T, TProperty>? CreateGetter<TProperty>(string name);
+    Getter<T, TProperty>? CreateGetter<TProperty>(string name);
 
-    Action<T, TProperty>? CreateSetter<TProperty>(string name);
+    Setter<T, TProperty>? CreateSetter<TProperty>(string name);
 }

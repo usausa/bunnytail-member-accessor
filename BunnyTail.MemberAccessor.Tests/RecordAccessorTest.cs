@@ -21,12 +21,12 @@ public class RecordAccessorTest
         var data = new RecordData { Id = 1, Name = "abc" };
 
         // Act & Assert
-        Assert.Equal(1, getId(data));
-        Assert.Equal("abc", getName(data));
+        Assert.Equal(1, getId(ref data));
+        Assert.Equal("abc", getName(ref data));
 
         // Act
-        setId(data, 2);
-        setName(data, "xyz");
+        setId(ref data, 2);
+        setName(ref data, "xyz");
 
         // Assert
         Assert.Equal(2, data.Id);
@@ -99,7 +99,7 @@ public class RecordAccessorTest
         // init-only positional properties are readable...
         var getId = factory.CreateGetter<int>(nameof(PositionalRecord.Id));
         Assert.NotNull(getId);
-        Assert.Equal(1, getId(data));
+        Assert.Equal(1, getId(ref data));
 
         // ...but not writable (init setters are treated as read-only)
         Assert.Null(factory.CreateSetter<int>(nameof(PositionalRecord.Id)));

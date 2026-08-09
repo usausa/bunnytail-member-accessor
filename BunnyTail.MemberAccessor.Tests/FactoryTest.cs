@@ -21,12 +21,12 @@ public class FactoryTest
         var data = new Data { Id = 123, Name = "abc" };
 
         // Act & Assert
-        Assert.Equal(123, getId(data));
-        Assert.Equal("abc", getName(data));
+        Assert.Equal(123, getId(ref data));
+        Assert.Equal("abc", getName(ref data));
 
         // Act
-        setId(data, 234);
-        setName(data, "xyz");
+        setId(ref data, 234);
+        setName(ref data, "xyz");
 
         // Assert
         Assert.Equal(234, data.Id);
@@ -52,20 +52,20 @@ public class FactoryTest
         var data = new NullableData { Id = 123, Name = "abc" };
 
         // Act & Assert
-        Assert.Equal(123, getId(data));
-        Assert.Equal("abc", getName(data));
+        Assert.Equal(123, getId(ref data));
+        Assert.Equal("abc", getName(ref data));
 
         // Act
-        setId(data, 234);
-        setName(data, "xyz");
+        setId(ref data, 234);
+        setName(ref data, "xyz");
 
         // Assert
         Assert.Equal(234, data.Id);
         Assert.Equal("xyz", data.Name);
 
         // Act
-        setId(data, null);
-        setName(data, null);
+        setId(ref data, null);
+        setName(ref data, null);
 
         // Assert
         Assert.Null(data.Id);
@@ -93,10 +93,10 @@ public class FactoryTest
         var data1 = new GenericData<int> { Value = 123 };
 
         // Act & Assert
-        Assert.Equal(123, get1(data1));
+        Assert.Equal(123, get1(ref data1));
 
         // Act
-        set1(data1, 234);
+        set1(ref data1, 234);
 
         // Assert
         Assert.Equal(234, data1.Value);
@@ -105,10 +105,10 @@ public class FactoryTest
         var data2 = new GenericData<string> { Value = "abc" };
 
         // Act & Assert (get)
-        Assert.Equal("abc", get2(data2));
+        Assert.Equal("abc", get2(ref data2));
 
         // Act
-        set2(data2, "xyz");
+        set2(ref data2, "xyz");
 
         // Assert
         Assert.Equal("xyz", data2.Value);
@@ -135,10 +135,10 @@ public class FactoryTest
         var data1 = new MultiGenericData<int, int> { Value1 = 123 };
 
         // Act & Assert
-        Assert.Equal(123, get1(data1));
+        Assert.Equal(123, get1(ref data1));
 
         // Act
-        set1(data1, 234);
+        set1(ref data1, 234);
 
         // Assert
         Assert.Equal(234, data1.Value1);
@@ -147,10 +147,10 @@ public class FactoryTest
         var data2 = new MultiGenericData<string, string> { Value1 = "abc" };
 
         // Act & Assert
-        Assert.Equal("abc", get2(data2));
+        Assert.Equal("abc", get2(ref data2));
 
         // Act
-        set2(data2, "xyz");
+        set2(ref data2, "xyz");
 
         // Assert
         Assert.Equal("xyz", data2.Value1);

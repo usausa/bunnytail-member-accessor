@@ -43,8 +43,8 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(setName is not null, "CreateSetter<string>(Name) returned null");
 
     var data = new Data { Id = 42, Name = "x" };
-    Assert(getId!(data) == 42, "Typed getter Id");
-    setName!(data, "y");
+    Assert(getId!(ref data) == 42, "Typed getter Id");
+    setName!(ref data, "y");
     Assert(data.Name == "y", "Typed setter Name");
     Console.WriteLine("  [OK] IAccessorFactory typed delegates");
 }
@@ -79,6 +79,22 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     accessor.SetValue(boxed, nameof(StructData.Id), 8);
     Assert(((StructData)boxed).Id == 8, "Struct SetValue Id (boxed)");
     Console.WriteLine("  [OK] Value type accessor (boxed)");
+}
+
+//--------------------------------------------------------------------------------
+// 4b. Value type (struct) ref-based typed setter (no boxing)
+//--------------------------------------------------------------------------------
+{
+    var factory = AccessorRegistry.FindFactory<StructData>();
+    Assert(factory is not null, "FindFactory<StructData> returned null");
+
+    var setId = factory!.CreateSetter<int>(nameof(StructData.Id));
+    Assert(setId is not null, "CreateSetter<int>(Id) returned null for struct");
+
+    var data = new StructData { Id = 1, Name = "s" };
+    setId!(ref data, 2);
+    Assert(data.Id == 2, "Struct typed setter (ref, in place)");
+    Console.WriteLine("  [OK] Value type ref-based typed setter");
 }
 
 //--------------------------------------------------------------------------------
@@ -165,6 +181,36 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     var instance = ctor!.Create(777);
     Assert(instance.Value == 777, "GenericHolder<int> Create(value)");
     Console.WriteLine("  [OK] Pre-registered closed generic constructor");
+}
+
+//--------------------------------------------------------------------------------
+// 11. IAccessorProvider / IConstructorProvider static abstract path (registry-free)
+//--------------------------------------------------------------------------------
+{
+    static IAccessorFactory<T> GetFactory<T>()
+        where T : IAccessorProvider<T>
+        => T.AccessorFactory;
+    static IConstructor<T> GetConstructor<T>()
+        where T : IConstructorProvider<T>
+        => T.Constructor;
+
+    var factory = GetFactory<Data>();
+    var data = new Data { Id = 1, Name = "a" };
+    var getId = factory.CreateGetter<int>(nameof(Data.Id));
+    Assert(getId is not null, "IAccessorProvider factory CreateGetter returned null");
+    Assert(getId!(ref data) == 1, "IAccessorProvider typed getter");
+
+    var ctor = GetConstructor<CtorData>();
+    var created = ctor.Create(5, "c");
+    Assert(created.Id == 5 && created.Name == "c", "IConstructorProvider Create");
+
+    // Closed generic flows through the type system: works without pre-registration
+    var genericFactory = GetFactory<GenericData<long>>();
+    var genericData = new GenericData<long> { Value = 9 };
+    var getValue = genericFactory.CreateGetter<long>(nameof(GenericData<>.Value));
+    Assert(getValue is not null, "IAccessorProvider generic CreateGetter returned null");
+    Assert(getValue!(ref genericData) == 9, "IAccessorProvider closed generic getter");
+    Console.WriteLine("  [OK] IAccessorProvider / IConstructorProvider static abstract path");
 }
 
 Console.WriteLine("All AOT smoke tests passed.");

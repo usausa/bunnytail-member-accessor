@@ -23,7 +23,7 @@ internal static class Diagnostics
     public static DiagnosticDescriptor NoAccessibleMembers { get; } = new(
         id: "BTMA0003",
         title: "No accessible members",
-        messageFormat: "Type has no accessible properties. type=[{0}]",
+        messageFormat: "Type has no accessible members. type=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
@@ -40,6 +40,38 @@ internal static class Diagnostics
         id: "BTMA0005",
         title: "Unsupported constructor arity",
         messageFormat: "Type has a constructor with more than {1} parameters, which is not supported. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor TypeNotPartial { get; } = new(
+        id: "BTMA0006",
+        title: "Type is not partial",
+        messageFormat: "Type is not partial, so the IAccessorProvider implementation is not generated. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor InvalidExternalTarget { get; } = new(
+        id: "BTMA0007",
+        title: "Invalid target type",
+        messageFormat: "The target type of [GenerateAccessorFor] is not supported. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor AccessorAlreadyGenerated { get; } = new(
+        id: "BTMA0008",
+        title: "Accessor already generated",
+        messageFormat: "Accessor classes are already generated for the target type by [GenerateAccessor]. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Info,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor GenericUnsafeAccessorNotSupported { get; } = new(
+        id: "BTMA0009",
+        title: "Non-public member access on generic type requires .NET 9 or later",
+        messageFormat: "Non-public member access on a generic type uses UnsafeAccessor with generic parameters, which requires .NET 9 or later at runtime. type=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);

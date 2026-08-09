@@ -74,15 +74,16 @@ public class AccessorBenchmark
     private IAccessor largeAccessor = default!;
 
     // Generated typed delegates (Factory)
-    private Func<Data, int> classIntFactoryGet = default!;
-    private Action<Data, int> classIntFactorySet = default!;
-    private Func<Data, string> classStringFactoryGet = default!;
-    private Action<Data, string> classStringFactorySet = default!;
-    private Func<StructData, int> structFactoryGet = default!;
-    private Func<GenericData<int>, int> genericFactoryGet = default!;
-    private Action<GenericData<int>, int> genericFactorySet = default!;
-    private Func<LargeData, int> largeFactoryGet = default!;
-    private Action<LargeData, int> largeFactorySet = default!;
+    private Getter<Data, int> classIntFactoryGet = default!;
+    private Setter<Data, int> classIntFactorySet = default!;
+    private Getter<Data, string> classStringFactoryGet = default!;
+    private Setter<Data, string> classStringFactorySet = default!;
+    private Getter<StructData, int> structFactoryGet = default!;
+    private Setter<StructData, int> structFactorySet = default!;
+    private Getter<GenericData<int>, int> genericFactoryGet = default!;
+    private Setter<GenericData<int>, int> genericFactorySet = default!;
+    private Getter<LargeData, int> largeFactoryGet = default!;
+    private Setter<LargeData, int> largeFactorySet = default!;
 
     // Compiled expression delegates
     private Func<Data, int> classIntExprGet = default!;
@@ -121,7 +122,9 @@ public class AccessorBenchmark
         classIntFactorySet = dataFactory.CreateSetter<int>(nameof(Data.Id))!;
         classStringFactoryGet = dataFactory.CreateGetter<string>(nameof(Data.Name))!;
         classStringFactorySet = dataFactory.CreateSetter<string>(nameof(Data.Name))!;
-        structFactoryGet = AccessorRegistry.FindFactory<StructData>()!.CreateGetter<int>(nameof(StructData.Id))!;
+        var structFactory = AccessorRegistry.FindFactory<StructData>()!;
+        structFactoryGet = structFactory.CreateGetter<int>(nameof(StructData.Id))!;
+        structFactorySet = structFactory.CreateSetter<int>(nameof(StructData.Id))!;
         var genericFactory = AccessorRegistry.FindFactory<GenericData<int>>()!;
         genericFactoryGet = genericFactory.CreateGetter<int>(nameof(GenericData<>.Value))!;
         genericFactorySet = genericFactory.CreateSetter<int>(nameof(GenericData<>.Value))!;
@@ -208,7 +211,7 @@ public class AccessorBenchmark
         var v = 0;
         for (var i = 0; i < N; i++)
         {
-            v = get(o);
+            v = get(ref o);
         }
         return v;
     }
@@ -296,7 +299,7 @@ public class AccessorBenchmark
         var set = classIntFactorySet;
         for (var i = 0; i < N; i++)
         {
-            set(o, 0);
+            set(ref o, 0);
         }
     }
 
@@ -392,7 +395,7 @@ public class AccessorBenchmark
         string? v = null;
         for (var i = 0; i < N; i++)
         {
-            v = get(o);
+            v = get(ref o);
         }
         return v;
     }
@@ -480,7 +483,7 @@ public class AccessorBenchmark
         var set = classStringFactorySet;
         for (var i = 0; i < N; i++)
         {
-            set(o, "x");
+            set(ref o, "x");
         }
     }
 
@@ -576,7 +579,7 @@ public class AccessorBenchmark
         var v = 0;
         for (var i = 0; i < N; i++)
         {
-            v = get(s);
+            v = get(ref s);
         }
         return v;
     }
@@ -609,7 +612,7 @@ public class AccessorBenchmark
         return v;
     }
 
-    // Struct-Set: typed delegate (Factory/Expression) is not supported for value types.
+    // Struct-Set: the ref-based Factory setter mutates the value in place (Expression is not supported).
     [BenchmarkCategory("Struct-Set")]
     [Benchmark(OperationsPerInvoke = N, Baseline = true)]
     public void StructSetDirect()
@@ -618,6 +621,19 @@ public class AccessorBenchmark
         for (var i = 0; i < N; i++)
         {
             s.Id = 0;
+        }
+        structData = s;
+    }
+
+    [BenchmarkCategory("Struct-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void StructSetFactory()
+    {
+        var s = structData;
+        var set = structFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set(ref s, 0);
         }
         structData = s;
     }
@@ -738,7 +754,7 @@ public class AccessorBenchmark
         var v = 0;
         for (var i = 0; i < N; i++)
         {
-            v = get(o);
+            v = get(ref o);
         }
         return v;
     }
@@ -826,7 +842,7 @@ public class AccessorBenchmark
         var set = genericFactorySet;
         for (var i = 0; i < N; i++)
         {
-            set(o, 0);
+            set(ref o, 0);
         }
     }
 
@@ -922,7 +938,7 @@ public class AccessorBenchmark
         var v = 0;
         for (var i = 0; i < N; i++)
         {
-            v = get(o);
+            v = get(ref o);
         }
         return v;
     }
@@ -1010,7 +1026,7 @@ public class AccessorBenchmark
         var set = largeFactorySet;
         for (var i = 0; i < N; i++)
         {
-            set(o, 0);
+            set(ref o, 0);
         }
     }
 

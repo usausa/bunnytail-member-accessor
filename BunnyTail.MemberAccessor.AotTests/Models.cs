@@ -6,7 +6,7 @@ namespace BunnyTail.MemberAccessor.AotTests;
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public sealed class Data
+public sealed partial class Data
 {
     public int Id { get; set; }
 
@@ -18,7 +18,7 @@ public sealed class Data
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public record struct StructData
+public partial record struct StructData
 {
     public int Id { get; set; }
 
@@ -30,7 +30,7 @@ public record struct StructData
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public sealed class InitOnlyData
+public sealed partial class InitOnlyData
 {
     public int Id { get; set; }
 
@@ -42,13 +42,13 @@ public sealed class InitOnlyData
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public class BaseData
+public partial class BaseData
 {
     public int Id { get; set; }
 }
 
 [GenerateAccessor]
-public sealed class DerivedData : BaseData
+public sealed partial class DerivedData : BaseData
 {
     public string Name { get; set; } = default!;
 }
@@ -58,7 +58,7 @@ public sealed class DerivedData : BaseData
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public sealed class CtorData
+public sealed partial class CtorData
 {
     public int Id { get; }
 
@@ -82,7 +82,7 @@ public sealed class CtorData
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public sealed class OverloadCtorData
+public sealed partial class OverloadCtorData
 {
     public int IntValue { get; }
 
@@ -98,13 +98,13 @@ public sealed class OverloadCtorData
 //--------------------------------------------------------------------------------
 
 [GenerateAccessor]
-public sealed class GenericData<T>
+public sealed partial class GenericData<T>
 {
     public T Value { get; set; } = default!;
 }
 
 [GenerateAccessor]
-public sealed class GenericHolder<T>
+public sealed partial class GenericHolder<T>
 {
     public T Value { get; }
 

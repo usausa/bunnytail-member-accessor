@@ -4,3 +4,5 @@ using BunnyTail.MemberAccessor;
 
 [assembly: TypedAccessor(typeof(GenericData<string>))]
 [assembly: TypedAccessor(typeof(GenericData<double>))]
+
+[assembly: GenerateAccessorFor(typeof(Version))]
