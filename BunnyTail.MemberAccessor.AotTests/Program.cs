@@ -213,4 +213,18 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Console.WriteLine("  [OK] IAccessorProvider / IConstructorProvider static abstract path");
 }
 
+//--------------------------------------------------------------------------------
+// 12. Unregistered type lookup (module-initializer fallback must not throw on AOT)
+//--------------------------------------------------------------------------------
+{
+    // On a lookup miss the registry forces the target module initializer via
+    // RuntimeHelpers.RunModuleConstructor; on Native AOT this may be unsupported
+    // and must be swallowed, resolving to null instead of crashing.
+    static Type GetRuntimeType<T>() => typeof(T);
+
+    Assert(AccessorRegistry.FindAccessor(GetRuntimeType<Uri>()) is null, "Unregistered FindAccessor(Type) should be null");
+    Assert(AccessorRegistry.FindFactory<Uri>() is null, "Unregistered FindFactory<T> should be null");
+    Console.WriteLine("  [OK] Unregistered type lookup (no crash, returns null)");
+}
+
 Console.WriteLine("All AOT smoke tests passed.");

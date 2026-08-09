@@ -2,6 +2,7 @@ namespace BunnyTail.MemberAccessor;
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 public static class AccessorRegistry
 {
@@ -87,7 +88,25 @@ public static class AccessorRegistry
     // Lookup
     // ------------------------------------------------------------
 
+    // Registrations run from generated [ModuleInitializer] methods, which fire on the first
+    // access to a member of the declaring module. A lookup using only typeof() of a type in
+    // another assembly may therefore arrive before registration. On a miss, force the module
+    // initializer of the type's assembly and retry so resolution does not depend on
+    // initialization order.
+    private static void EnsureModuleInitialized(Type type)
+    {
+        try
+        {
+            RuntimeHelpers.RunModuleConstructor(type.Module.ModuleHandle);
+        }
+        catch (Exception e) when (e is PlatformNotSupportedException or NotSupportedException)
+        {
+            // Native AOT executes module initializers eagerly at startup; nothing to force.
+        }
+    }
+
     // Finds an <see cref="IAccessor"/> for the specified type.
+    // This overload caches the result per T in a static field, making repeated calls lock-free.
     public static IAccessor? FindAccessor<T>()
     {
         if (AccessorCache<T>.Instance is { } cached)
@@ -101,11 +120,20 @@ public static class AccessorRegistry
     }
 
     // Finds an <see cref="IAccessor"/> for the specified type.
+    // This overload performs a dictionary lookup on every call; prefer FindAccessor{T}()
+    // on hot paths where the type is statically known.
     public static IAccessor? FindAccessor(Type type) => FindAccessorCore(type);
 
     private static IAccessor? FindAccessorCore(Type type)
     {
         if (AccessorInstances.TryGetValue(type, out var accessor))
+        {
+            return accessor;
+        }
+
+        EnsureModuleInitialized(type);
+
+        if (AccessorInstances.TryGetValue(type, out accessor))
         {
             return accessor;
         }
@@ -125,6 +153,7 @@ public static class AccessorRegistry
     }
 
     // Finds an <see cref="IAccessorFactory{T}"/> for the specified type.
+    // This overload caches the result per T in a static field, making repeated calls lock-free.
     public static IAccessorFactory<T>? FindFactory<T>()
     {
         if (FactoryCache<T>.Instance is { } cached)
@@ -138,11 +167,20 @@ public static class AccessorRegistry
     }
 
     // Finds an <see cref="IAccessorFactory"/> for the specified type.
+    // This overload performs a dictionary lookup on every call; prefer FindFactory{T}()
+    // on hot paths where the type is statically known.
     public static IAccessorFactory? FindFactory(Type type) => FindFactoryCore(type);
 
     private static IAccessorFactory? FindFactoryCore(Type type)
     {
         if (FactoryInstances.TryGetValue(type, out var factory))
+        {
+            return factory;
+        }
+
+        EnsureModuleInitialized(type);
+
+        if (FactoryInstances.TryGetValue(type, out factory))
         {
             return factory;
         }
@@ -162,6 +200,7 @@ public static class AccessorRegistry
     }
 
     // Finds an <see cref="IConstructor{T}"/> for the specified type.
+    // The result is cached per T in a static field, making repeated calls lock-free.
     public static IConstructor<T>? FindConstructor<T>()
     {
         if (ConstructorCache<T>.Instance is { } cached)
@@ -177,6 +216,13 @@ public static class AccessorRegistry
     private static object? FindConstructorCore(Type type)
     {
         if (ConstructorInstances.TryGetValue(type, out var ctor))
+        {
+            return ctor;
+        }
+
+        EnsureModuleInitialized(type);
+
+        if (ConstructorInstances.TryGetValue(type, out ctor))
         {
             return ctor;
         }
