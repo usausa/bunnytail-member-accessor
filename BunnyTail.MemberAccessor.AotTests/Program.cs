@@ -227,4 +227,25 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Console.WriteLine("  [OK] Unregistered type lookup (no crash, returns null)");
 }
 
+//--------------------------------------------------------------------------------
+// 13. Read/Write extensions (ref-free access for reference types, uses Unsafe.AsRef)
+//--------------------------------------------------------------------------------
+{
+    var factory = AccessorRegistry.FindFactory<Data>();
+    Assert(factory is not null, "FindFactory<Data> returned null");
+
+    var getName = factory!.CreateGetter<string>(nameof(Data.Name));
+    var setName = factory.CreateSetter<string>(nameof(Data.Name));
+    Assert(getName is not null, "CreateGetter<string>(Name) returned null");
+    Assert(setName is not null, "CreateSetter<string>(Name) returned null");
+
+    // A list element is a property, so it cannot be passed by ref directly.
+    var list = new List<Data> { new() { Id = 1, Name = "a" } };
+    Assert(getName!.Read(list[0]) == "a", "Extension Read via list element");
+
+    setName!.Write(list[0], "b");
+    Assert(list[0].Name == "b", "Extension Write via list element");
+    Console.WriteLine("  [OK] Read/Write extensions");
+}
+
 Console.WriteLine("All AOT smoke tests passed.");

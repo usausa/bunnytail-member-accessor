@@ -52,6 +52,7 @@ public class AccessorBenchmark
 
     // Targets
     private Data classData = default!;
+    private DataHolder classHolder = default!;
     private StructData structData;
     private object structBoxed = default!;
     private GenericData<int> generic = default!;
@@ -100,6 +101,7 @@ public class AccessorBenchmark
     public void Setup()
     {
         classData = new Data { Id = 1, Name = "abc" };
+        classHolder = new DataHolder { Item = classData };
         structData = new StructData { Id = 1, Name = "abc" };
         structBoxed = structData;
         generic = new GenericData<int> { Value = 1 };
@@ -218,6 +220,51 @@ public class AccessorBenchmark
 
     [BenchmarkCategory("ClassInt-Get")]
     [Benchmark(OperationsPerInvoke = N)]
+    public int ClassIntGetFactoryExtension()
+    {
+        var o = classData;
+        var get = classIntFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get.Read(o);
+        }
+        return v;
+    }
+
+    // Property source: ref cannot be applied directly, so the extension is compared against
+    // the temporary-local workaround it replaces.
+    [BenchmarkCategory("ClassIntProperty-Get")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public int ClassIntPropertyGetTemp()
+    {
+        var h = classHolder;
+        var get = classIntFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            var tmp = h.Item;
+            v = get(ref tmp);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassIntProperty-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public int ClassIntPropertyGetExtension()
+    {
+        var h = classHolder;
+        var get = classIntFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get.Read(h.Item);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("ClassInt-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
     public object? ClassIntGetReflectionCached()
     {
         var o = classData;
@@ -300,6 +347,18 @@ public class AccessorBenchmark
         for (var i = 0; i < N; i++)
         {
             set(ref o, 0);
+        }
+    }
+
+    [BenchmarkCategory("ClassInt-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void ClassIntSetFactoryExtension()
+    {
+        var o = classData;
+        var set = classIntFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set.Write(o, 0);
         }
     }
 
@@ -1119,6 +1178,11 @@ public class Data
     public int Id { get; set; }
 
     public string Name { get; set; } = default!;
+}
+
+public sealed class DataHolder
+{
+    public Data Item { get; set; } = default!;
 }
 
 [GenerateAccessor]
