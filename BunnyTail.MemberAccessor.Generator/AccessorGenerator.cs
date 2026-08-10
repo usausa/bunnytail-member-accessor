@@ -70,13 +70,21 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             models,
             static (context, type) => ExecuteClass(context, type));
 
+        var typeKeyProvider = typeProvider
+            .Select(static (types, _) => new EquatableArray<string>(types.SelectValue().Select(MakeTypeKey).ToArray()))
+            .WithTrackingName("TypeKeys");
         context.RegisterImplementationSourceOutput(
-            externalProvider.Combine(typeProvider),
+            externalProvider.Combine(typeKeyProvider),
             static (context, provider) => ExecuteExternal(context, provider.Left, provider.Right));
 
+        var registryProvider = typeProvider
+            .Combine(closedGenericProvider)
+            .Combine(externalProvider)
+            .Select(static (provider, _) => BuildRegistryModel(provider.Left.Left, provider.Left.Right, provider.Right))
+            .WithTrackingName("Registry");
         context.RegisterImplementationSourceOutput(
-            typeProvider.Combine(closedGenericProvider).Combine(externalProvider),
-            static (context, provider) => ExecuteRegistry(context, provider.Left.Left, provider.Left.Right, provider.Right));
+            registryProvider,
+            static (context, model) => ExecuteRegistry(context, model));
     }
 
     // ------------------------------------------------------------
@@ -528,11 +536,11 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static void ExecuteExternal(
         SourceProductionContext context,
         ImmutableArray<EquatableArray<Result<ExternalModel>>> externals,
-        ImmutableArray<Result<TypeModel>> types)
+        EquatableArray<string> typeKeys)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
 
-        var emitted = new HashSet<string>(types.SelectValue().Select(MakeTypeKey), StringComparer.Ordinal);
+        var emitted = new HashSet<string>(typeKeys, StringComparer.Ordinal);
         var witnessEmitted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var external in externals.SelectMany(static x => x.SelectValue()))
         {
@@ -560,24 +568,21 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
     }
 
-    private static void ExecuteRegistry(
-        SourceProductionContext context,
+    private static RegistryModel BuildRegistryModel(
         ImmutableArray<Result<TypeModel>> types,
         ImmutableArray<EquatableArray<Result<ClosedGenericModel>>> closedGenerics,
         ImmutableArray<EquatableArray<Result<ExternalModel>>> externals)
     {
-        context.CancellationToken.ThrowIfCancellationRequested();
-
-        var targetTypes = types.SelectValue().ToList();
+        var targetTypes = types.SelectValue().Select(MakeRegistryType).ToList();
         var closedTypes = closedGenerics.SelectMany(static x => x.SelectValue()).ToList();
 
         // Merge external targets
-        var typeKeys = new HashSet<string>(targetTypes.Select(MakeTypeKey), StringComparer.Ordinal);
+        var typeKeys = new HashSet<string>(types.SelectValue().Select(MakeTypeKey), StringComparer.Ordinal);
         foreach (var external in externals.SelectMany(static x => x.SelectValue()))
         {
             if (!external.TargetHasGenerateAccessor && typeKeys.Add(MakeTypeKey(external.Type)))
             {
-                targetTypes.Add(external.Type);
+                targetTypes.Add(MakeRegistryType(external.Type));
             }
             if (external.ClosedGeneric is not null)
             {
@@ -587,10 +592,21 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         // Distinct closed registrations
         var closedKeys = new HashSet<string>(StringComparer.Ordinal);
-        closedTypes = closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x))).ToList();
+
+        return new RegistryModel(
+            new EquatableArray<RegistryTypeModel>(targetTypes.ToArray()),
+            new EquatableArray<ClosedGenericModel>(closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x))).ToArray()));
+    }
+
+    private static RegistryTypeModel MakeRegistryType(TypeModel type) =>
+        new(type.Namespace, type.ClassName, type.TypeArgumentCount, type.Constructors.Count > 0);
+
+    private static void ExecuteRegistry(SourceProductionContext context, RegistryModel model)
+    {
+        context.CancellationToken.ThrowIfCancellationRequested();
 
         var builder = new SourceBuilder();
-        BuildRegistrySource(builder, targetTypes, closedTypes);
+        BuildRegistrySource(builder, model.Types, model.ClosedTypes);
         context.AddSource("AccessorInitializer.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
     }
 
@@ -1269,7 +1285,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.EndScope();
     }
 
-    private static void BuildRegistrySource(SourceBuilder builder, List<TypeModel> types, List<ClosedGenericModel> closedTypes)
+    private static void BuildRegistrySource(SourceBuilder builder, EquatableArray<RegistryTypeModel> types, EquatableArray<ClosedGenericModel> closedTypes)
     {
         builder.AutoGenerated();
         builder.EnableNullable();
@@ -1319,7 +1335,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                     .NewLine();
 
                 // Register constructor accessor if constructors exist
-                if (type.Constructors.Count > 0)
+                if (type.HasConstructors)
                 {
                     builder
                         .Indent()
@@ -1356,7 +1372,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                             .Append(".Instance);")
                             .NewLine();
 
-                        if (type.Constructors.Count > 0)
+                        if (type.HasConstructors)
                         {
                             builder
                                 .Indent()
@@ -1398,7 +1414,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 builder.IndentLevel--;
 
                 // Open-generic constructor accessor delegate for on-demand instantiation
-                if (type.Constructors.Count > 0)
+                if (type.HasConstructors)
                 {
                     builder
                         .Indent()
