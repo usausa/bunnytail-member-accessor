@@ -9,7 +9,7 @@ internal static class Diagnostics
         title: "Invalid type argument",
         messageFormat: "Type must be generic type. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor InvalidAttributeLocation { get; } = new(
@@ -17,7 +17,7 @@ internal static class Diagnostics
         title: "Invalid attribute location",
         messageFormat: "Attribute must be in the same location as the target type. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor NoAccessibleMembers { get; } = new(
@@ -25,7 +25,7 @@ internal static class Diagnostics
         title: "No accessible members",
         messageFormat: "Type has no accessible members. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor TypedAccessorTargetNotDecorated { get; } = new(
@@ -33,7 +33,7 @@ internal static class Diagnostics
         title: "TypedAccessor target not decorated",
         messageFormat: "The target type of [TypedAccessor] does not have [GenerateAccessor]. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor UnsupportedConstructorArity { get; } = new(
@@ -41,7 +41,7 @@ internal static class Diagnostics
         title: "Unsupported constructor arity",
         messageFormat: "Type has a constructor with more than {1} parameters, which is not supported. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor TypeNotPartial { get; } = new(
@@ -57,7 +57,7 @@ internal static class Diagnostics
         title: "Invalid target type",
         messageFormat: "The target type of [GenerateAccessorFor] is not supported. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static DiagnosticDescriptor AccessorAlreadyGenerated { get; } = new(
@@ -73,6 +73,6 @@ internal static class Diagnostics
         title: "Non-public member access on generic type requires .NET 9 or later",
         messageFormat: "Non-public member access on a generic type uses UnsafeAccessor with generic parameters, which requires .NET 9 or later at runtime. type=[{0}]",
         category: "Usage",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 }
