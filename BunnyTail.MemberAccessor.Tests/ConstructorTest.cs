@@ -2,6 +2,8 @@ namespace BunnyTail.MemberAccessor;
 
 public class ConstructorTest
 {
+    private static Type GetRuntimeType<T>() => typeof(T);
+
     [Fact]
     public void TestParameterlessConstructor()
     {
@@ -211,6 +213,102 @@ public class ConstructorTest
 
         // Act & Assert
         Assert.Throws<NotSupportedException>(() => ctor.Create(1.5));
+    }
+
+    [Fact]
+    public void TestCreateInstanceParameterless()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<CtorData0>());
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = Assert.IsType<CtorData0>(ctor.CreateInstance());
+
+        // Assert
+        Assert.Equal(0, instance.Id);
+    }
+
+    [Fact]
+    public void TestCreateInstanceWithArguments()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<CtorData2>());
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = Assert.IsType<CtorData2>(ctor.CreateInstance(99, "hello"));
+
+        // Assert
+        Assert.Equal(99, instance.Id);
+        Assert.Equal("hello", instance.Name);
+    }
+
+    [Fact]
+    public void TestCreateInstanceStruct()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<StructData>());
+        Assert.NotNull(ctor);
+
+        // Act
+        var instance = Assert.IsType<StructData>(ctor.CreateInstance());
+
+        // Assert
+        Assert.Equal(0, instance.Id);
+    }
+
+    [Fact]
+    public void TestCreateInstanceSameArityOverload()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<OverloadCtorData>());
+        Assert.NotNull(ctor);
+
+        // Act
+        var fromInt = Assert.IsType<OverloadCtorData>(ctor.CreateInstance(42));
+        var fromString = Assert.IsType<OverloadCtorData>(ctor.CreateInstance("hello"));
+
+        // Assert
+        Assert.Equal(42, fromInt.IntValue);
+        Assert.Equal("hello", fromString.StringValue);
+    }
+
+    [Fact]
+    public void TestCreateInstanceNullableParameter()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<NullableCtorData>());
+        Assert.NotNull(ctor);
+
+        // Act
+        var fromInt = Assert.IsType<NullableCtorData>(ctor.CreateInstance(5));
+        var fromNull = Assert.IsType<NullableCtorData>(ctor.CreateInstance([null]));
+        var fromString = Assert.IsType<NullableCtorData>(ctor.CreateInstance("abc"));
+
+        // Assert
+        Assert.Equal(5, fromInt.Value);
+        Assert.Null(fromNull.Value);
+        Assert.Null(fromNull.Text);
+        Assert.Equal("abc", fromString.Text);
+    }
+
+    [Fact]
+    public void TestCreateInstanceUnmatchedThrows()
+    {
+        // Arrange
+        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<OverloadCtorData>());
+        Assert.NotNull(ctor);
+
+        // Act & Assert
+        Assert.Throws<NotSupportedException>(() => ctor.CreateInstance(1.5));
+        Assert.Throws<NotSupportedException>(() => ctor.CreateInstance(1, 2));
+    }
+
+    [Fact]
+    public void TestCreateInstanceSharesGenericInstance()
+    {
+        Assert.Same(AccessorRegistry.FindConstructor<CtorData2>(), AccessorRegistry.FindConstructor(GetRuntimeType<CtorData2>()));
     }
 
     [Fact]

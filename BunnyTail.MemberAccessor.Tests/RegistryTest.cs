@@ -11,6 +11,7 @@ public class RegistryTest
         var type = GetRuntimeType<Uri>();
         Assert.Null(AccessorRegistry.FindAccessor(type));
         Assert.Null(AccessorRegistry.FindFactory(type));
+        Assert.Null(AccessorRegistry.FindConstructor(type));
         Assert.Null(AccessorRegistry.FindAccessor<Uri>());
         Assert.Null(AccessorRegistry.FindFactory<Uri>());
         Assert.Null(AccessorRegistry.FindConstructor<Uri>());

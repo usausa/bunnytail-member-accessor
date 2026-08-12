@@ -135,6 +135,12 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 
     var d2 = ctor.Create(99, "hello");
     Assert(d2.Id == 99 && d2.Name == "hello", "Ctor Create(int, string)");
+
+    static Type GetRuntimeType<T>() => typeof(T);
+    var objCtor = AccessorRegistry.FindConstructor(GetRuntimeType<CtorData>());
+    Assert(objCtor is not null, "FindConstructor(Type) returned null");
+    var d3 = (CtorData)objCtor!.CreateInstance(7, "obj");
+    Assert(d3.Id == 7 && d3.Name == "obj", "CreateInstance(object[])");
     Console.WriteLine("  [OK] Constructor accessor");
 }
 

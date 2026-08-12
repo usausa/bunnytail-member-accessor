@@ -1,6 +1,11 @@
 namespace BunnyTail.MemberAccessor;
 
-public interface IConstructor<out T>
+public interface IConstructor
+{
+    object CreateInstance(params object?[] args);
+}
+
+public interface IConstructor<out T> : IConstructor
 {
     T Create();
 

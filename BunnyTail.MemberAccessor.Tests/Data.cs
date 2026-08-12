@@ -243,6 +243,19 @@ public partial class OverloadCtorData
     public OverloadCtorData(string stringValue) => StringValue = stringValue;
 }
 
+// Same-arity constructor overload with nullable value type parameter
+[GenerateAccessor]
+public partial class NullableCtorData
+{
+    public int? Value { get; }
+
+    public string? Text { get; }
+
+    public NullableCtorData(int? value) => Value = value;
+
+    public NullableCtorData(string text) => Text = text;
+}
+
 // Generic constructor accessor test data
 [GenerateAccessor]
 [TypedAccessor(typeof(GenericHolder<int>))]

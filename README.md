@@ -33,18 +33,16 @@ public partial class Data
 ```csharp
 using BunnyTail.MemberAccessor;
 
-var accessorFactory = AccessorRegistry.FindFactory<Data>();
-var getter = accessorFactory.CreateGetter<int>(nameof(Data.Id));
-var setter = accessorFactory.CreateSetter<int>(nameof(Data.Id));
+var factory = AccessorProvider.GetFactory<Data>();
+var getter = factory.CreateGetter<int>(nameof(Data.Id));
+var setter = factory.CreateSetter<int>(nameof(Data.Id));
 
 var data = new Data();
 setter(ref data, 123);
 var id = getter(ref data);
 ```
 
-For targets that cannot be passed by `ref` (properties, list elements, `foreach` variables),
-the `Read` / `Write` extension methods provide ref-free invocation with the same syntax for
-classes and structs:
+For targets that cannot be passed by `ref` (properties, list elements, `foreach` variables), the `Read` / `Write` extension methods provide ref-free invocation with the same syntax for classes and structs:
 
 ```csharp
 var list = new List<Data> { new() { Id = 1 } };
@@ -54,13 +52,12 @@ setter.Write(list[0], 2);
 
 The same syntax works for structs; the target variable is mutated in place (see Struct Support).
 
-> **Note:** For value types the target must be a variable (local, field, array element).
-> A write through a temporary copy (property or `List<T>` indexer result) is lost.
+> **Note:** For value types the target must be a variable (local, field, array element). A write through a temporary copy (property or `List<T>` indexer result) is lost.
 
 ### Member Enumeration
 
 ```csharp
-var factory = AccessorRegistry.FindFactory<Data>();
+var factory = AccessorProvider.GetFactory<Data>();
 foreach (var member in factory.Members)
 {
     Console.WriteLine($"{member.Name}: {member.Type} CanRead={member.CanRead} CanWrite={member.CanWrite}");
@@ -70,30 +67,37 @@ foreach (var member in factory.Members)
 ### Constructor Accessor
 
 ```csharp
-var ctor = AccessorRegistry.FindConstructor<Data>();
+var ctor = AccessorProvider.GetConstructor<Data>();
 var instance = ctor.Create();          // parameterless
 var instance2 = ctor.Create<int>(42); // 1-arg constructor
 ```
 
-Constructor accessors are available for generic types as well (closed types are pre-registered
-with `[TypedAccessor]`, others are created on demand):
+Constructor accessors are available for generic types as well:
 
 ```csharp
-var ctor = AccessorRegistry.FindConstructor<GenericHolder<int>>();
+var ctor = AccessorProvider.GetConstructor<GenericHolder<int>>();
 var instance = ctor.Create<int>(42);
 ```
 
-When a type declares multiple constructors with the **same arity**, the matching constructor is
-selected at runtime by the argument type. Pass the exact parameter type as the type argument:
+When a type declares multiple constructors with the **same arity**, the matching constructor is selected at runtime by the argument type. Pass the exact parameter type as the type argument:
 
 ```csharp
 // class Sample { Sample(int v); Sample(string v); }
-var ctor = AccessorRegistry.FindConstructor<Sample>();
+var ctor = AccessorProvider.GetConstructor<Sample>();
 var a = ctor.Create(42);      // -> Sample(int)
 var b = ctor.Create("text");  // -> Sample(string)
 ```
 
 If no constructor matches the supplied argument type, `NotSupportedException` is thrown.
+
+A reflection-style API taking an `object` array is available through the non-generic `IConstructor` interface. Use `AccessorRegistry.FindConstructor(Type)` when only a `System.Type` is available at hand:
+
+```csharp
+var ctor = AccessorRegistry.FindConstructor(type)!;
+var instance = (Data)ctor.CreateInstance(99, "hello");
+```
+
+`CreateInstance` selects the constructor by argument count and the runtime type of each argument (`null` matches reference types and `Nullable<T>` parameters), and throws `NotSupportedException` when no constructor matches.
 
 ### Struct Support
 
@@ -101,19 +105,18 @@ If no constructor matches the supplied argument type, `NotSupportedException` is
 [GenerateAccessor]
 public partial struct Point { public int X { get; set; } public int Y { get; set; } }
 
-var accessor = AccessorRegistry.FindAccessor<Point>();
+var accessor = AccessorProvider.GetAccessor<Point>();
 object boxed = new Point { X = 1, Y = 2 };
 accessor.SetValue(boxed, "X", 10); // modifies boxed instance
 
-var factory = AccessorRegistry.FindFactory<Point>();
+var factory = AccessorProvider.GetFactory<Point>();
 var setX = factory.CreateSetter<int>(nameof(Point.X));
 var point = new Point();
 setX(ref point, 10);    // mutates in place, no boxing
 setX.Write(point, 20);  // extension: same syntax as class
 ```
 
-> **Note:** The object-based `IAccessor.SetValue` requires a boxed instance and modifies the
-> boxed copy. The typed delegates take the target by `ref` and mutate the caller's value in place.
+> **Note:** The object-based `IAccessor.SetValue` requires a boxed instance and modifies the boxed copy. The typed delegates take the target by `ref` and mutate the caller's value in place.
 
 ## Attributes
 
@@ -138,9 +141,7 @@ public partial class Data
 }
 ```
 
-When the type is declared `partial`, it also implements `IAccessorProvider<T>` (and
-`IConstructorProvider<T>` when public constructors are available), enabling registry-free
-access through static abstract members:
+When the type is declared `partial`, it also implements `IAccessorProvider<T>` (and `IConstructorProvider<T>` when public constructors are available), enabling registry-free access through `AccessorProvider`:
 
 ```csharp
 var factory = AccessorProvider.GetFactory<Data>();
@@ -148,8 +149,7 @@ var factory = AccessorProvider.GetFactory<Data>();
 
 ### TypedAccessor
 
-Open generic types are instantiated on demand with `MakeGenericType`, which is not AOT-safe.
-Pre-register the closed types used by the application for Native AOT:
+On the `AccessorRegistry` path, open generic types are instantiated on demand with `MakeGenericType`, which is not AOT-safe. Pre-register the closed types used by the application for Native AOT (the `AccessorProvider` path does not need pre-registration):
 
 ```csharp
 [GenerateAccessor]
@@ -169,9 +169,7 @@ Assembly-level registration is also supported:
 
 ### AccessorMember
 
-Non-public members are excluded by default and can be opted in with `[AccessorMember]`.
-Access to opted-in members is implemented with `UnsafeAccessor`; for generic types this
-requires .NET 9 or later. `Ignore = true` excludes a member from generation:
+Non-public members are excluded by default and can be opted in with `[AccessorMember]`. Access to opted-in members is implemented with `UnsafeAccessor`; for generic types this requires .NET 9 or later. `Ignore = true` excludes a member from generation:
 
 ```csharp
 [GenerateAccessor]
@@ -189,8 +187,7 @@ public partial class HiddenData
 
 ### GenerateAccessorFor
 
-Generates accessors for types that cannot be annotated, such as BCL types or types in other
-assemblies:
+Generates accessors for types that cannot be annotated, such as BCL types or types in other assemblies. With the assembly-level form, the accessors are resolved through `AccessorRegistry`:
 
 ```csharp
 [assembly: GenerateAccessorFor(typeof(Version))]
@@ -201,9 +198,7 @@ var factory = AccessorRegistry.FindFactory<Version>()!;
 var getMajor = factory.CreateGetter<int>(nameof(Version.Major))!;
 ```
 
-When the attribute is placed on a `partial` class, that class additionally implements
-`IAccessorProvider<T>` / `IConstructorProvider<T>` for each target type, so external types
-can also be used through static abstract constraints:
+When the attribute is placed on a `partial` class instead, that class implements `IAccessorProvider<T>` / `IConstructorProvider<T>` for each target type, so external types can also be resolved through `AccessorProvider`:
 
 ```csharp
 [GenerateAccessorFor(typeof(PlainData))]
@@ -213,31 +208,28 @@ internal sealed partial class AccessorProviders;
 var factory = AccessorProvider.GetFactory<PlainData, AccessorProviders>();
 ```
 
-## AccessorRegistry vs AccessorProvider
+## AccessorProvider vs AccessorRegistry
 
-Accessors can be resolved in two ways:
+Accessors can be resolved in two ways. Prefer `AccessorProvider` whenever the target type is statically known — it resolves at compile time, avoids the dictionary lookup and never returns `null`:
 
 ```csharp
+// Compile-time resolution via static abstract members (always succeeds)
+var factory = AccessorProvider.GetFactory<Data>();
+
 // Runtime lookup by type (nullable result)
 var factory1 = AccessorRegistry.FindFactory<Data>();
 var factory2 = AccessorRegistry.FindFactory(typeof(Data));
-
-// Compile-time resolution via static abstract members (always succeeds)
-var factory3 = AccessorProvider.GetFactory<Data>();
 ```
 
-| | `AccessorRegistry` | `AccessorProvider` |
+| | `AccessorProvider` | `AccessorRegistry` |
 | --- | --- | --- |
-| Resolution | Runtime dictionary lookup | Compile-time via static abstract members |
-| Result | Nullable (`null` when not registered) | Non-null (guaranteed by generic constraint) |
-| `System.Type`-based lookup | ✅ `FindFactory(type)` | ❌ Generic type argument only |
-| Generic types on Native AOT | Closed types must be pre-registered with `[TypedAccessor]` | Any closed instantiation works without pre-registration |
-| Requirement | Type registered via attributes | `partial` type with `[GenerateAccessor]`, or a provider class with `[GenerateAccessorFor]` |
+| Resolution | Compile-time via static abstract members | Runtime dictionary lookup |
+| Result | Non-null (guaranteed by generic constraint) | Nullable (`null` when not registered) |
+| `System.Type`-based lookup | ❌ Generic type argument only | ✅ `FindFactory(type)` / `FindConstructor(type)` |
+| Generic types on Native AOT | Any closed instantiation works without pre-registration | Closed types must be pre-registered with `[TypedAccessor]` |
+| Requirement | `partial` type with `[GenerateAccessor]`, or a provider class with `[GenerateAccessorFor]` | Type registered via attributes |
 
-Guideline: prefer `AccessorProvider` when the target type is statically known — it avoids the
-dictionary lookup and never returns `null`. Use `AccessorRegistry` when types are handled
-dynamically (serialization, mapping frameworks, `System.Type`-driven scenarios), or when the
-target type is not `partial`.
+Use `AccessorRegistry` only where the provider path is not available: `System.Type`-driven scenarios such as serialization and mapping frameworks, non-`partial` target types, and targets registered with the assembly-level `[GenerateAccessorFor]`.
 
 ## Support Matrix
 
@@ -255,7 +247,7 @@ target type is not `partial`.
 | Read-only properties | ✅ | Setter returns `null` |
 | Fields | ✅ | Public instance fields; `readonly` fields are read-only |
 | Non-public members | ✅ | Opt-in with `[AccessorMember]` (implemented with `UnsafeAccessor`) |
-| Constructor accessor | ✅ | Arity 0–16; AOT-safe; generic types supported |
+| Constructor accessor | ✅ | Arity 0–16; typed `Create<...>` and reflection-style `CreateInstance(object[])`; AOT-safe; generic types supported |
 | Same-arity constructor overloads | ✅ | Resolved by argument type at runtime (see Constructor Accessor) |
 | `IAccessorFactory.Members` | ✅ | `IReadOnlyList<MemberDescriptor>` (properties and fields, including opted-in non-public members) |
 | Registry-free access | ✅ | `AccessorProvider` / `IAccessorProvider<T>` static abstract members on `partial` types |
@@ -293,10 +285,7 @@ WarmupCount=10
 
 ### Type Scenarios
 
-Cached reflection (`PropertyInfo`) compared with the generated typed accessor (`CreateGetter<T>` /
-`CreateSetter<T>`) across property types (`int` / `string`), a value type (`struct`), a large class,
-and a generic type. The generated accessor is allocation-free and stays roughly constant regardless
-of the member type or the declaring-type kind.
+Cached reflection (`PropertyInfo`) compared with the generated typed accessor (`CreateGetter<T>` / `CreateSetter<T>`) across property types (`int` / `string`), a value type (`struct`), a large class, and a generic type. The generated accessor is allocation-free and stays roughly constant regardless of the member type or the declaring-type kind.
 
 ```
 BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8524/25H2/2025Update/HudsonValley2)

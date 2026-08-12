@@ -190,6 +190,8 @@ public static class AccessorRegistry
         return result;
     }
 
+    public static IConstructor? FindConstructor(Type type) => (IConstructor?)FindConstructorCore(type);
+
     private static object? FindConstructorCore(Type type)
     {
         if (ConstructorInstances.TryGetValue(type, out var ctor))
