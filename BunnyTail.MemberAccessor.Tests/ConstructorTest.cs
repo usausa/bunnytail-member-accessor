@@ -8,7 +8,7 @@ public class ConstructorTest
     public void TestParameterlessConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<CtorData0>();
+        var ctor = AccessorProvider.FindConstructor<CtorData0>();
         Assert.NotNull(ctor);
 
         // Act
@@ -23,7 +23,7 @@ public class ConstructorTest
     public void TestOneParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<CtorData1>();
+        var ctor = AccessorProvider.FindConstructor<CtorData1>();
         Assert.NotNull(ctor);
 
         // Act
@@ -37,7 +37,7 @@ public class ConstructorTest
     public void TestTwoParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<CtorData2>();
+        var ctor = AccessorProvider.FindConstructor<CtorData2>();
         Assert.NotNull(ctor);
 
         // Act
@@ -52,7 +52,7 @@ public class ConstructorTest
     public void TestFiveParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        var ctor = AccessorProvider.FindConstructor<MultiArgCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -70,7 +70,7 @@ public class ConstructorTest
     public void TestSixParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        var ctor = AccessorProvider.FindConstructor<MultiArgCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -89,7 +89,7 @@ public class ConstructorTest
     public void TestSevenParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        var ctor = AccessorProvider.FindConstructor<MultiArgCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -109,7 +109,7 @@ public class ConstructorTest
     public void TestEightParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<MultiArgCtorData>();
+        var ctor = AccessorProvider.FindConstructor<MultiArgCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -130,7 +130,7 @@ public class ConstructorTest
     public void TestNineParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<WideCtorData>();
+        var ctor = AccessorProvider.FindConstructor<WideCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -147,7 +147,7 @@ public class ConstructorTest
     public void TestSixteenParameterConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<WideCtorData>();
+        var ctor = AccessorProvider.FindConstructor<WideCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -164,7 +164,7 @@ public class ConstructorTest
     public void TestWideUnsupportedArityThrows()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<WideCtorData>();
+        var ctor = AccessorProvider.FindConstructor<WideCtorData>();
         Assert.NotNull(ctor);
 
         // Act & Assert
@@ -175,7 +175,7 @@ public class ConstructorTest
     public void TestUnsupportedArityThrows()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<CtorData1>();
+        var ctor = AccessorProvider.FindConstructor<CtorData1>();
         Assert.NotNull(ctor);
 
         // Act & Assert
@@ -186,7 +186,7 @@ public class ConstructorTest
     public void TestSameArityOverloadResolvedByArgumentType()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<OverloadCtorData>();
+        var ctor = AccessorProvider.FindConstructor<OverloadCtorData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -208,7 +208,7 @@ public class ConstructorTest
     public void TestSameArityOverloadUnmatchedTypeThrows()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<OverloadCtorData>();
+        var ctor = AccessorProvider.FindConstructor<OverloadCtorData>();
         Assert.NotNull(ctor);
 
         // Act & Assert
@@ -219,7 +219,7 @@ public class ConstructorTest
     public void TestCreateInstanceParameterless()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<CtorData0>());
+        var ctor = AccessorProvider.FindConstructor(GetRuntimeType<CtorData0>());
         Assert.NotNull(ctor);
 
         // Act
@@ -233,7 +233,7 @@ public class ConstructorTest
     public void TestCreateInstanceWithArguments()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<CtorData2>());
+        var ctor = AccessorProvider.FindConstructor(GetRuntimeType<CtorData2>());
         Assert.NotNull(ctor);
 
         // Act
@@ -248,7 +248,7 @@ public class ConstructorTest
     public void TestCreateInstanceStruct()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<StructData>());
+        var ctor = AccessorProvider.FindConstructor(GetRuntimeType<StructData>());
         Assert.NotNull(ctor);
 
         // Act
@@ -262,7 +262,7 @@ public class ConstructorTest
     public void TestCreateInstanceSameArityOverload()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<OverloadCtorData>());
+        var ctor = AccessorProvider.FindConstructor(GetRuntimeType<OverloadCtorData>());
         Assert.NotNull(ctor);
 
         // Act
@@ -278,7 +278,7 @@ public class ConstructorTest
     public void TestCreateInstanceNullableParameter()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<NullableCtorData>());
+        var ctor = AccessorProvider.FindConstructor(GetRuntimeType<NullableCtorData>());
         Assert.NotNull(ctor);
 
         // Act
@@ -297,7 +297,7 @@ public class ConstructorTest
     public void TestCreateInstanceUnmatchedThrows()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor(GetRuntimeType<OverloadCtorData>());
+        var ctor = AccessorProvider.FindConstructor(GetRuntimeType<OverloadCtorData>());
         Assert.NotNull(ctor);
 
         // Act & Assert
@@ -308,14 +308,14 @@ public class ConstructorTest
     [Fact]
     public void TestCreateInstanceSharesGenericInstance()
     {
-        Assert.Same(AccessorRegistry.FindConstructor<CtorData2>(), AccessorRegistry.FindConstructor(GetRuntimeType<CtorData2>()));
+        Assert.Same(AccessorProvider.FindConstructor<CtorData2>(), AccessorProvider.FindConstructor(GetRuntimeType<CtorData2>()));
     }
 
     [Fact]
     public void TestGenericConstructorPreRegistered()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<GenericData<DateTime>>();
+        var ctor = AccessorProvider.FindConstructor<GenericData<DateTime>>();
         Assert.NotNull(ctor);
 
         // Act
@@ -329,7 +329,7 @@ public class ConstructorTest
     public void TestGenericConstructorOnDemand()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<GenericData<int>>();
+        var ctor = AccessorProvider.FindConstructor<GenericData<int>>();
         Assert.NotNull(ctor);
 
         // Act
@@ -343,7 +343,7 @@ public class ConstructorTest
     public void TestGenericConstructorWithArgument()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<GenericHolder<int>>();
+        var ctor = AccessorProvider.FindConstructor<GenericHolder<int>>();
         Assert.NotNull(ctor);
 
         // Act
@@ -357,7 +357,7 @@ public class ConstructorTest
     public void TestGenericConstructorWithArgumentOnDemand()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<GenericHolder<string>>();
+        var ctor = AccessorProvider.FindConstructor<GenericHolder<string>>();
         Assert.NotNull(ctor);
 
         // Act

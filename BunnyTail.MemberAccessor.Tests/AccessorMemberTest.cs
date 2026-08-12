@@ -6,7 +6,7 @@ public class AccessorMemberTest
     public void TestIgnoredMembersExcluded()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<IgnoreData>();
+        var factory = AccessorProvider.FindFactory<IgnoreData>();
         Assert.NotNull(factory);
 
         // Act
@@ -25,7 +25,7 @@ public class AccessorMemberTest
     public void TestIgnoredMemberAccessorThrows()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<IgnoreData>();
+        var accessor = AccessorProvider.FindAccessor<IgnoreData>();
         Assert.NotNull(accessor);
 
         var data = new IgnoreData { Value = 1, Secret = "abc" };
@@ -38,7 +38,7 @@ public class AccessorMemberTest
     public void TestInternalMemberOptIn()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<HiddenData>();
+        var factory = AccessorProvider.FindFactory<HiddenData>();
         Assert.NotNull(factory);
 
         var get = factory.CreateGetter<string>("InternalValue");
@@ -62,7 +62,7 @@ public class AccessorMemberTest
     public void TestPrivatePropertyOptIn()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<HiddenData>();
+        var factory = AccessorProvider.FindFactory<HiddenData>();
         Assert.NotNull(factory);
 
         var get = factory.CreateGetter<string>("Secret");
@@ -87,8 +87,8 @@ public class AccessorMemberTest
     public void TestPrivateFieldOptIn()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<HiddenData>();
-        var factory = AccessorRegistry.FindFactory<HiddenData>();
+        var accessor = AccessorProvider.FindAccessor<HiddenData>();
+        var factory = AccessorProvider.FindFactory<HiddenData>();
         Assert.NotNull(accessor);
         Assert.NotNull(factory);
 
@@ -114,7 +114,7 @@ public class AccessorMemberTest
     public void TestPrivateSetterOptIn()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<HiddenData>();
+        var factory = AccessorProvider.FindFactory<HiddenData>();
         Assert.NotNull(factory);
 
         var get = factory.CreateGetter<int>(nameof(HiddenData.Score));
@@ -139,7 +139,7 @@ public class AccessorMemberTest
     public void TestNonPublicMembersIncludedInMembers()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<HiddenData>();
+        var factory = AccessorProvider.FindFactory<HiddenData>();
         Assert.NotNull(factory);
 
         // Act
@@ -164,7 +164,7 @@ public class AccessorMemberTest
     public void TestStructPrivateFieldOptIn()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructHiddenData>();
+        var factory = AccessorProvider.FindFactory<StructHiddenData>();
         Assert.NotNull(factory);
 
         var get = factory.CreateGetter<int>("hidden");
@@ -188,7 +188,7 @@ public class AccessorMemberTest
     public void TestGenericPrivateMemberOptIn()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<GenericHiddenData<int>>();
+        var factory = AccessorProvider.FindFactory<GenericHiddenData<int>>();
         Assert.NotNull(factory);
 
         var get = factory.CreateGetter<int>("hidden");

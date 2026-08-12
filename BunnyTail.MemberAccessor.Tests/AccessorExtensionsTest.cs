@@ -11,7 +11,7 @@ public class AccessorExtensionsTest
     public void TestReadWriteViaProperty()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         var getName = factory.CreateGetter<string>(nameof(Data.Name));
@@ -35,7 +35,7 @@ public class AccessorExtensionsTest
     public void TestReadWriteViaListElement()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         var getId = factory.CreateGetter<int>(nameof(Data.Id));
@@ -59,7 +59,7 @@ public class AccessorExtensionsTest
     public void TestWriteAffectsOriginalInstance()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         var setId = factory.CreateSetter<int>(nameof(Data.Id));
@@ -80,7 +80,7 @@ public class AccessorExtensionsTest
     public void TestReadWriteInForEach()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         var setId = factory.CreateSetter<int>(nameof(Data.Id));
@@ -106,7 +106,7 @@ public class AccessorExtensionsTest
     public void TestExtensionMatchesRefInvocation()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         var getName = factory.CreateGetter<string>(nameof(Data.Name));
@@ -122,7 +122,7 @@ public class AccessorExtensionsTest
     public void TestStructReadWriteViaVariable()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructData>();
+        var factory = AccessorProvider.FindFactory<StructData>();
         Assert.NotNull(factory);
 
         var getId = factory.CreateGetter<int>(nameof(StructData.Id));
@@ -146,7 +146,7 @@ public class AccessorExtensionsTest
     public void TestStructWriteViaArrayElement()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructData>();
+        var factory = AccessorProvider.FindFactory<StructData>();
         Assert.NotNull(factory);
 
         var setId = factory.CreateSetter<int>(nameof(StructData.Id));
@@ -165,7 +165,7 @@ public class AccessorExtensionsTest
     public void TestStructWriteToTemporaryCopyIsLost()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructData>();
+        var factory = AccessorProvider.FindFactory<StructData>();
         Assert.NotNull(factory);
 
         var setId = factory.CreateSetter<int>(nameof(StructData.Id));

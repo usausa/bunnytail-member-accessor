@@ -6,7 +6,7 @@ public class InitOnlyAccessorTest
     public void TestInitOnlyPropertyIsReadable()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<InitOnlyData>();
+        var factory = AccessorProvider.FindFactory<InitOnlyData>();
         Assert.NotNull(factory);
 
         var data = new InitOnlyData { Id = 1, Name = "abc" };
@@ -19,7 +19,7 @@ public class InitOnlyAccessorTest
         Assert.Equal("abc", getName(ref data));
 
         // Act
-        var accessor = AccessorRegistry.FindAccessor<InitOnlyData>();
+        var accessor = AccessorProvider.FindAccessor<InitOnlyData>();
 
         // Assert
         Assert.NotNull(accessor);
@@ -30,7 +30,7 @@ public class InitOnlyAccessorTest
     public void TestInitOnlySetterReturnsNull()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<InitOnlyData>();
+        var factory = AccessorProvider.FindFactory<InitOnlyData>();
         Assert.NotNull(factory);
 
         // Act & Assert
@@ -42,7 +42,7 @@ public class InitOnlyAccessorTest
     public void TestInitOnlyAccessorSetValueThrows()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<InitOnlyData>();
+        var accessor = AccessorProvider.FindAccessor<InitOnlyData>();
         Assert.NotNull(accessor);
 
         var data = new InitOnlyData { Id = 1, Name = "abc" };
@@ -55,7 +55,7 @@ public class InitOnlyAccessorTest
     public void TestInitOnlyMembers()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<InitOnlyData>();
+        var factory = AccessorProvider.FindFactory<InitOnlyData>();
         Assert.NotNull(factory);
 
         // Act
@@ -77,7 +77,7 @@ public class InitOnlyAccessorTest
     public void TestNormalPropertyStillWritable()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<InitOnlyData>();
+        var factory = AccessorProvider.FindFactory<InitOnlyData>();
         Assert.NotNull(factory);
 
         var setId = factory.CreateSetter<int>(nameof(InitOnlyData.Id));

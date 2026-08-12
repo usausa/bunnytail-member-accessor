@@ -1,9 +1,11 @@
-namespace BunnyTail.MemberAccessor;
+namespace BunnyTail.MemberAccessor.Internal;
 
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class AccessorRegistry
 {
     private static readonly ConcurrentDictionary<Type, IAccessor> AccessorInstances = new();
@@ -50,7 +52,7 @@ public static class AccessorRegistry
     }
 
     // ------------------------------------------------------------
-    // Static generic cache
+    // Cache
     // ------------------------------------------------------------
 
     // ReSharper disable once UnusedTypeParameter
@@ -94,7 +96,7 @@ public static class AccessorRegistry
         }
     }
 
-    public static IAccessor? FindAccessor<T>()
+    internal static IAccessor? FindAccessor<T>()
     {
         if (AccessorCache<T>.Instance is { } cached)
         {
@@ -106,7 +108,7 @@ public static class AccessorRegistry
         return result;
     }
 
-    public static IAccessor? FindAccessor(Type type) => FindAccessorCore(type);
+    internal static IAccessor? FindAccessor(Type type) => FindAccessorCore(type);
 
     private static IAccessor? FindAccessorCore(Type type)
     {
@@ -136,7 +138,7 @@ public static class AccessorRegistry
         return AccessorInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), factory);
     }
 
-    public static IAccessorFactory<T>? FindFactory<T>()
+    internal static IAccessorFactory<T>? FindFactory<T>()
     {
         if (FactoryCache<T>.Instance is { } cached)
         {
@@ -148,7 +150,7 @@ public static class AccessorRegistry
         return result;
     }
 
-    public static IAccessorFactory? FindFactory(Type type) => FindFactoryCore(type);
+    internal static IAccessorFactory? FindFactory(Type type) => FindFactoryCore(type);
 
     private static IAccessorFactory? FindFactoryCore(Type type)
     {
@@ -178,7 +180,7 @@ public static class AccessorRegistry
         return FactoryInstances.GetOrAdd(type, static (t, f) => f(t.GenericTypeArguments), openFactory);
     }
 
-    public static IConstructor<T>? FindConstructor<T>()
+    internal static IConstructor<T>? FindConstructor<T>()
     {
         if (ConstructorCache<T>.Instance is { } cached)
         {
@@ -190,7 +192,7 @@ public static class AccessorRegistry
         return result;
     }
 
-    public static IConstructor? FindConstructor(Type type) => (IConstructor?)FindConstructorCore(type);
+    internal static IConstructor? FindConstructor(Type type) => (IConstructor?)FindConstructorCore(type);
 
     private static object? FindConstructorCore(Type type)
     {

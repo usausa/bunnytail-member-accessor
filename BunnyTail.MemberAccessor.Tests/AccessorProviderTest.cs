@@ -27,9 +27,9 @@ public class AccessorProviderTest
     [Fact]
     public void TestProviderSharesRegistryInstance()
     {
-        Assert.Same(AccessorRegistry.FindAccessor<Data>(), AccessorProvider.GetAccessor<Data>());
-        Assert.Same(AccessorRegistry.FindFactory<Data>(), AccessorProvider.GetFactory<Data>());
-        Assert.Same(AccessorRegistry.FindConstructor<CtorData2>(), AccessorProvider.GetConstructor<CtorData2>());
+        Assert.Same(AccessorProvider.FindAccessor<Data>(), AccessorProvider.GetAccessor<Data>());
+        Assert.Same(AccessorProvider.FindFactory<Data>(), AccessorProvider.GetFactory<Data>());
+        Assert.Same(AccessorProvider.FindConstructor<CtorData2>(), AccessorProvider.GetConstructor<CtorData2>());
     }
 
     [Fact]

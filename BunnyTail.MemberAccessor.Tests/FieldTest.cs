@@ -6,7 +6,7 @@ public class FieldTest
     public void TestFieldAccessor()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<FieldData>();
+        var accessor = AccessorProvider.FindAccessor<FieldData>();
         Assert.NotNull(accessor);
 
         var data = new FieldData(99) { Count = 1, Tag = "abc", Value = 2 };
@@ -33,7 +33,7 @@ public class FieldTest
     public void TestFieldTypedDelegates()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<FieldData>();
+        var factory = AccessorProvider.FindFactory<FieldData>();
         Assert.NotNull(factory);
 
         var getCount = factory.CreateGetter<int>(nameof(FieldData.Count));
@@ -63,7 +63,7 @@ public class FieldTest
     public void TestFieldMembers()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<FieldData>();
+        var factory = AccessorProvider.FindFactory<FieldData>();
         Assert.NotNull(factory);
 
         // Act
@@ -90,8 +90,8 @@ public class FieldTest
     public void TestStructFieldAccessor()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<StructFieldData>();
-        var factory = AccessorRegistry.FindFactory<StructFieldData>();
+        var accessor = AccessorProvider.FindAccessor<StructFieldData>();
+        var factory = AccessorProvider.FindFactory<StructFieldData>();
         Assert.NotNull(accessor);
         Assert.NotNull(factory);
 

@@ -6,7 +6,7 @@ public class AccessorTest
     public void TestBasic()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<Data>();
+        var accessor = AccessorProvider.FindAccessor<Data>();
         Assert.NotNull(accessor);
         var data = new Data { Id = 123, Name = "abc" };
 
@@ -27,7 +27,7 @@ public class AccessorTest
     public void TestNullable()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<NullableData>();
+        var accessor = AccessorProvider.FindAccessor<NullableData>();
         Assert.NotNull(accessor);
         var data = new NullableData { Id = 123, Name = "abc" };
 
@@ -56,8 +56,8 @@ public class AccessorTest
     public void TestGenerics()
     {
         // Arrange
-        var accessor1 = AccessorRegistry.FindAccessor<GenericData<int>>();
-        var accessor2 = AccessorRegistry.FindAccessor<GenericData<string>>();
+        var accessor1 = AccessorProvider.FindAccessor<GenericData<int>>();
+        var accessor2 = AccessorProvider.FindAccessor<GenericData<string>>();
         Assert.NotNull(accessor1);
         Assert.NotNull(accessor2);
         var data1 = new GenericData<int> { Value = 123 };
@@ -88,8 +88,8 @@ public class AccessorTest
     public void TestMultiGenerics()
     {
         // Arrange
-        var accessor1 = AccessorRegistry.FindAccessor<MultiGenericData<int, int>>();
-        var accessor2 = AccessorRegistry.FindAccessor<MultiGenericData<string, string>>();
+        var accessor1 = AccessorProvider.FindAccessor<MultiGenericData<int, int>>();
+        var accessor2 = AccessorProvider.FindAccessor<MultiGenericData<string, string>>();
         Assert.NotNull(accessor1);
         Assert.NotNull(accessor2);
         var data1 = new MultiGenericData<int, int> { Value1 = 123 };

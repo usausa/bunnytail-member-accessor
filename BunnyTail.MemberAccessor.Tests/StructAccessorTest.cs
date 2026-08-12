@@ -6,7 +6,7 @@ public class StructAccessorTest
     public void TestStructAccessorGetValue()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<StructData>();
+        var accessor = AccessorProvider.FindAccessor<StructData>();
         Assert.NotNull(accessor);
 
         object boxed = new StructData { Id = 10, Name = "test" };
@@ -20,7 +20,7 @@ public class StructAccessorTest
     public void TestStructAccessorSetValue()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<StructData>();
+        var accessor = AccessorProvider.FindAccessor<StructData>();
         Assert.NotNull(accessor);
 
         object boxed = new StructData { Id = 10, Name = "test" };
@@ -38,7 +38,7 @@ public class StructAccessorTest
     public void TestStructTypedGetter()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructData>();
+        var factory = AccessorProvider.FindFactory<StructData>();
         Assert.NotNull(factory);
 
         var getId = factory.CreateGetter<int>(nameof(StructData.Id));
@@ -54,7 +54,7 @@ public class StructAccessorTest
     public void TestStructTypedSetter()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructData>();
+        var factory = AccessorProvider.FindFactory<StructData>();
         Assert.NotNull(factory);
 
         // ref-based setters mutate the value type in place (no boxing required)
@@ -78,7 +78,7 @@ public class StructAccessorTest
     public void TestStructObjectSetter()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<StructData>();
+        var factory = AccessorProvider.FindFactory<StructData>();
         Assert.NotNull(factory);
 
         // Object-based setter mutates the boxed instance

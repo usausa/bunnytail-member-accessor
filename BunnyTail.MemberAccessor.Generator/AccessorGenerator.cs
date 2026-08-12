@@ -1407,7 +1407,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 var targetName = MakeQualifiedName(type.Namespace, type.ClassName);
                 builder
                     .Indent()
-                    .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterFactory(typeof(")
+                    .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterFactory(typeof(")
                     .Append(targetName)
                     .Append("), ")
                     .Append(MakeQualifiedName(type.Namespace, $"{type.ClassName}{AccessorSuffix}"))
@@ -1421,7 +1421,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 {
                     builder
                         .Indent()
-                        .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterConstructor<")
+                        .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterConstructor<")
                         .Append(targetName)
                         .Append(">(typeof(")
                         .Append(targetName)
@@ -1445,7 +1445,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                         var targetName = MakeQualifiedName(type.Namespace, $"{prefix}{argsPart}");
                         builder
                             .Indent()
-                            .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterFactory(typeof(")
+                            .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterFactory(typeof(")
                             .Append(targetName)
                             .Append("), ")
                             .Append(MakeQualifiedName(type.Namespace, $"{prefix}{AccessorSuffix}{argsPart}"))
@@ -1458,7 +1458,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                         {
                             builder
                                 .Indent()
-                                .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterConstructor<")
+                                .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterConstructor<")
                                 .Append(targetName)
                                 .Append(">(typeof(")
                                 .Append(targetName)
@@ -1474,7 +1474,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 var openAngle = MakeOpenAnglePart(type.TypeArgumentCount);
                 builder
                     .Indent()
-                    .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterOpenGenericFactory(typeof(")
+                    .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterOpenGenericFactory(typeof(")
                     .Append(MakeQualifiedName(type.Namespace, $"{prefix}{openAngle}"))
                     .Append("),")
                     .NewLine();
@@ -1500,7 +1500,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 {
                     builder
                         .Indent()
-                        .Append("global::BunnyTail.MemberAccessor.AccessorRegistry.RegisterOpenGenericConstructorFactory(typeof(")
+                        .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterOpenGenericConstructorFactory(typeof(")
                         .Append(MakeQualifiedName(type.Namespace, $"{prefix}{openAngle}"))
                         .Append("),")
                         .NewLine();

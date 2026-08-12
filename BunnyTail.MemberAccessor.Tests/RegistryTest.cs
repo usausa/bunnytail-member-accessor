@@ -9,21 +9,21 @@ public class RegistryTest
     {
         // Lookup misses run the target module initializer and must still resolve to null without throwing
         var type = GetRuntimeType<Uri>();
-        Assert.Null(AccessorRegistry.FindAccessor(type));
-        Assert.Null(AccessorRegistry.FindFactory(type));
-        Assert.Null(AccessorRegistry.FindConstructor(type));
-        Assert.Null(AccessorRegistry.FindAccessor<Uri>());
-        Assert.Null(AccessorRegistry.FindFactory<Uri>());
-        Assert.Null(AccessorRegistry.FindConstructor<Uri>());
+        Assert.Null(AccessorProvider.FindAccessor(type));
+        Assert.Null(AccessorProvider.FindFactory(type));
+        Assert.Null(AccessorProvider.FindConstructor(type));
+        Assert.Null(AccessorProvider.FindAccessor<Uri>());
+        Assert.Null(AccessorProvider.FindFactory<Uri>());
+        Assert.Null(AccessorProvider.FindConstructor<Uri>());
     }
 
     [Fact]
     public void TestUnregisteredGenericTypeReturnsNull()
     {
         // Generic types without open-generic registrations resolve to null without throwing
-        Assert.Null(AccessorRegistry.FindAccessor(GetRuntimeType<List<int>>()));
-        Assert.Null(AccessorRegistry.FindFactory<List<int>>());
-        Assert.Null(AccessorRegistry.FindConstructor<List<int>>());
+        Assert.Null(AccessorProvider.FindAccessor(GetRuntimeType<List<int>>()));
+        Assert.Null(AccessorProvider.FindFactory<List<int>>());
+        Assert.Null(AccessorProvider.FindConstructor<List<int>>());
     }
 
     [Fact]
@@ -31,7 +31,7 @@ public class RegistryTest
     {
         // The Type-based overloads resolve the same singletons as the generic overloads
         var type = GetRuntimeType<Data>();
-        Assert.Same(AccessorRegistry.FindAccessor<Data>(), AccessorRegistry.FindAccessor(type));
-        Assert.Same(AccessorRegistry.FindFactory<Data>(), AccessorRegistry.FindFactory(type));
+        Assert.Same(AccessorProvider.FindAccessor<Data>(), AccessorProvider.FindAccessor(type));
+        Assert.Same(AccessorProvider.FindFactory<Data>(), AccessorProvider.FindFactory(type));
     }
 }

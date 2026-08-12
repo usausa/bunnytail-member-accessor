@@ -6,7 +6,7 @@ public class FactoryTest
     public void TestBasic()
     {
         // Arrange
-        var accessorFactory = AccessorRegistry.FindFactory<Data>();
+        var accessorFactory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(accessorFactory);
 
         var getId = accessorFactory.CreateGetter<int>(nameof(Data.Id));
@@ -37,7 +37,7 @@ public class FactoryTest
     public void TestNullable()
     {
         // Arrange
-        var accessorFactory = AccessorRegistry.FindFactory<NullableData>();
+        var accessorFactory = AccessorProvider.FindFactory<NullableData>();
         Assert.NotNull(accessorFactory);
 
         var getId = accessorFactory.CreateGetter<int?>(nameof(NullableData.Id));
@@ -76,8 +76,8 @@ public class FactoryTest
     public void TestGenerics()
     {
         // Arrange
-        var accessorFactory1 = AccessorRegistry.FindFactory<GenericData<int>>();
-        var accessorFactory2 = AccessorRegistry.FindFactory<GenericData<string>>();
+        var accessorFactory1 = AccessorProvider.FindFactory<GenericData<int>>();
+        var accessorFactory2 = AccessorProvider.FindFactory<GenericData<string>>();
         Assert.NotNull(accessorFactory1);
         Assert.NotNull(accessorFactory2);
 
@@ -118,8 +118,8 @@ public class FactoryTest
     public void TestMultiGenerics()
     {
         // Arrange
-        var accessorFactory1 = AccessorRegistry.FindFactory<MultiGenericData<int, int>>();
-        var accessorFactory2 = AccessorRegistry.FindFactory<MultiGenericData<string, string>>();
+        var accessorFactory1 = AccessorProvider.FindFactory<MultiGenericData<int, int>>();
+        var accessorFactory2 = AccessorProvider.FindFactory<MultiGenericData<string, string>>();
         Assert.NotNull(accessorFactory1);
         Assert.NotNull(accessorFactory2);
 

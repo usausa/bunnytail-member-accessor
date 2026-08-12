@@ -16,7 +16,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 1. IAccessor get/set on a reference type
 //--------------------------------------------------------------------------------
 {
-    var accessor = AccessorRegistry.FindAccessor<Data>();
+    var accessor = AccessorProvider.FindAccessor<Data>();
     Assert(accessor is not null, "FindAccessor<Data> returned null");
 
     var data = new Data { Id = 1, Name = "Alice" };
@@ -34,7 +34,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 2. IAccessorFactory typed getter/setter delegates
 //--------------------------------------------------------------------------------
 {
-    var factory = AccessorRegistry.FindFactory<Data>();
+    var factory = AccessorProvider.FindFactory<Data>();
     Assert(factory is not null, "FindFactory<Data> returned null");
 
     var getId = factory!.CreateGetter<int>(nameof(Data.Id));
@@ -53,7 +53,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 3. MemberDescriptor metadata
 //--------------------------------------------------------------------------------
 {
-    var factory = AccessorRegistry.FindFactory<Data>();
+    var factory = AccessorProvider.FindFactory<Data>();
     Assert(factory is not null, "FindFactory<Data> returned null");
 
     var members = factory!.Members;
@@ -69,7 +69,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 4. Value type (struct) accessor via boxed instance
 //--------------------------------------------------------------------------------
 {
-    var accessor = AccessorRegistry.FindAccessor<StructData>();
+    var accessor = AccessorProvider.FindAccessor<StructData>();
     Assert(accessor is not null, "FindAccessor<StructData> returned null");
 
     object boxed = new StructData { Id = 7, Name = "s" };
@@ -85,7 +85,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 4b. Value type (struct) ref-based typed setter (no boxing)
 //--------------------------------------------------------------------------------
 {
-    var factory = AccessorRegistry.FindFactory<StructData>();
+    var factory = AccessorProvider.FindFactory<StructData>();
     Assert(factory is not null, "FindFactory<StructData> returned null");
 
     var setId = factory!.CreateSetter<int>(nameof(StructData.Id));
@@ -101,7 +101,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 5. init-only property is read-only
 //--------------------------------------------------------------------------------
 {
-    var factory = AccessorRegistry.FindFactory<InitOnlyData>();
+    var factory = AccessorProvider.FindFactory<InitOnlyData>();
     Assert(factory is not null, "FindFactory<InitOnlyData> returned null");
 
     var nameMember = factory!.Members.First(m => m.Name == nameof(InitOnlyData.Name));
@@ -114,7 +114,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 6. Inherited properties are collected
 //--------------------------------------------------------------------------------
 {
-    var accessor = AccessorRegistry.FindAccessor<DerivedData>();
+    var accessor = AccessorProvider.FindAccessor<DerivedData>();
     Assert(accessor is not null, "FindAccessor<DerivedData> returned null");
 
     var data = new DerivedData { Id = 5, Name = "derived" };
@@ -127,7 +127,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 7. Constructor accessor (parameterless and 2-arg)
 //--------------------------------------------------------------------------------
 {
-    var ctor = AccessorRegistry.FindConstructor<CtorData>();
+    var ctor = AccessorProvider.FindConstructor<CtorData>();
     Assert(ctor is not null, "FindConstructor<CtorData> returned null");
 
     var d0 = ctor!.Create();
@@ -137,7 +137,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(d2.Id == 99 && d2.Name == "hello", "Ctor Create(int, string)");
 
     static Type GetRuntimeType<T>() => typeof(T);
-    var objCtor = AccessorRegistry.FindConstructor(GetRuntimeType<CtorData>());
+    var objCtor = AccessorProvider.FindConstructor(GetRuntimeType<CtorData>());
     Assert(objCtor is not null, "FindConstructor(Type) returned null");
     var d3 = (CtorData)objCtor!.CreateInstance(7, "obj");
     Assert(d3.Id == 7 && d3.Name == "obj", "CreateInstance(object[])");
@@ -148,7 +148,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 8. Same-arity overloaded constructor resolved by argument type
 //--------------------------------------------------------------------------------
 {
-    var ctor = AccessorRegistry.FindConstructor<OverloadCtorData>();
+    var ctor = AccessorProvider.FindConstructor<OverloadCtorData>();
     Assert(ctor is not null, "FindConstructor<OverloadCtorData> returned null");
 
     var fromInt = ctor!.Create(123);
@@ -163,8 +163,8 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 9. Pre-registered closed generic accessor (AOT-safe path via [TypedAccessor])
 //--------------------------------------------------------------------------------
 {
-    var accInt = AccessorRegistry.FindAccessor<GenericData<int>>();
-    var accStr = AccessorRegistry.FindAccessor<GenericData<string>>();
+    var accInt = AccessorProvider.FindAccessor<GenericData<int>>();
+    var accStr = AccessorProvider.FindAccessor<GenericData<string>>();
     Assert(accInt is not null, "FindAccessor<GenericData<int>> returned null");
     Assert(accStr is not null, "FindAccessor<GenericData<string>> returned null");
 
@@ -181,7 +181,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 10. Pre-registered closed generic constructor accessor
 //--------------------------------------------------------------------------------
 {
-    var ctor = AccessorRegistry.FindConstructor<GenericHolder<int>>();
+    var ctor = AccessorProvider.FindConstructor<GenericHolder<int>>();
     Assert(ctor is not null, "FindConstructor<GenericHolder<int>> returned null");
 
     var instance = ctor!.Create(777);
@@ -219,8 +219,8 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     // RunModuleConstructor on a lookup miss may be unsupported on Native AOT and must resolve to null instead of throwing
     static Type GetRuntimeType<T>() => typeof(T);
 
-    Assert(AccessorRegistry.FindAccessor(GetRuntimeType<Uri>()) is null, "Unregistered FindAccessor(Type) should be null");
-    Assert(AccessorRegistry.FindFactory<Uri>() is null, "Unregistered FindFactory<T> should be null");
+    Assert(AccessorProvider.FindAccessor(GetRuntimeType<Uri>()) is null, "Unregistered FindAccessor(Type) should be null");
+    Assert(AccessorProvider.FindFactory<Uri>() is null, "Unregistered FindFactory<T> should be null");
     Console.WriteLine("  [OK] Unregistered type lookup (no crash, returns null)");
 }
 
@@ -228,7 +228,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 13. Read/Write extensions (ref-free access via Unsafe.AsRef)
 //--------------------------------------------------------------------------------
 {
-    var factory = AccessorRegistry.FindFactory<Data>();
+    var factory = AccessorProvider.FindFactory<Data>();
     Assert(factory is not null, "FindFactory<Data> returned null");
 
     var getName = factory!.CreateGetter<string>(nameof(Data.Name));
@@ -244,7 +244,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(list[0].Name == "b", "Extension Write via list element");
 
     // Value types: a variable is mutated in place
-    var structFactory = AccessorRegistry.FindFactory<StructData>();
+    var structFactory = AccessorProvider.FindFactory<StructData>();
     Assert(structFactory is not null, "FindFactory<StructData> returned null");
     var setId = structFactory!.CreateSetter<int>(nameof(StructData.Id));
     Assert(setId is not null, "CreateSetter<int>(Id) returned null for struct");

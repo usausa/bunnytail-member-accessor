@@ -6,7 +6,7 @@ public class MembersTest
     public void TestMembersDescriptors()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         // Act
@@ -35,7 +35,7 @@ public class MembersTest
     public void TestInheritedPropertiesIncluded()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<DerivedData>();
+        var factory = AccessorProvider.FindFactory<DerivedData>();
         Assert.NotNull(factory);
 
         // Act
@@ -53,7 +53,7 @@ public class MembersTest
     public void TestInheritedPropertyAccess()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<DerivedData>();
+        var accessor = AccessorProvider.FindAccessor<DerivedData>();
         Assert.NotNull(accessor);
         var data = new DerivedData { Id = 5, Name = "derived" };
 
@@ -72,7 +72,7 @@ public class MembersTest
     public void TestPublicInstancePropertiesOnly()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<FilterData>();
+        var factory = AccessorProvider.FindFactory<FilterData>();
         Assert.NotNull(factory);
 
         // Act

@@ -6,7 +6,7 @@ public class RecordAccessorTest
     public void TestRecordClassFactoryGetSet()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<RecordData>();
+        var factory = AccessorProvider.FindFactory<RecordData>();
         Assert.NotNull(factory);
 
         var getId = factory.CreateGetter<int>(nameof(RecordData.Id));
@@ -37,7 +37,7 @@ public class RecordAccessorTest
     public void TestRecordClassAccessor()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<RecordData>();
+        var accessor = AccessorProvider.FindAccessor<RecordData>();
         Assert.NotNull(accessor);
 
         var data = new RecordData { Id = 1, Name = "abc" };
@@ -56,7 +56,7 @@ public class RecordAccessorTest
     public void TestRecordClassMembers()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<RecordData>();
+        var factory = AccessorProvider.FindFactory<RecordData>();
         Assert.NotNull(factory);
 
         // Act
@@ -76,7 +76,7 @@ public class RecordAccessorTest
     public void TestRecordClassConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<RecordData>();
+        var ctor = AccessorProvider.FindConstructor<RecordData>();
         Assert.NotNull(ctor);
 
         // Act
@@ -91,7 +91,7 @@ public class RecordAccessorTest
     public void TestPositionalRecordPropertiesAreReadOnly()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<PositionalRecord>();
+        var factory = AccessorProvider.FindFactory<PositionalRecord>();
         Assert.NotNull(factory);
         var data = new PositionalRecord(1, "abc");
 
@@ -117,7 +117,7 @@ public class RecordAccessorTest
     public void TestPositionalRecordConstructor()
     {
         // Arrange
-        var ctor = AccessorRegistry.FindConstructor<PositionalRecord>();
+        var ctor = AccessorProvider.FindConstructor<PositionalRecord>();
         Assert.NotNull(ctor);
 
         // Act

@@ -116,26 +116,26 @@ public class AccessorBenchmark
         genericPi = typeof(GenericData<int>).GetProperty(nameof(GenericData<>.Value))!;
         largePi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
 
-        constructorCached = AccessorRegistry.FindConstructor<Data>()!;
-        factoryCached = AccessorRegistry.FindFactory<Data>()!;
+        constructorCached = AccessorProvider.FindConstructor<Data>()!;
+        factoryCached = AccessorProvider.FindFactory<Data>()!;
         dataType = typeof(Data);
-        dataAccessor = AccessorRegistry.FindAccessor<Data>()!;
-        structAccessor = AccessorRegistry.FindAccessor<StructData>()!;
-        genericAccessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
-        largeAccessor = AccessorRegistry.FindAccessor<LargeData>()!;
+        dataAccessor = AccessorProvider.FindAccessor<Data>()!;
+        structAccessor = AccessorProvider.FindAccessor<StructData>()!;
+        genericAccessor = AccessorProvider.FindAccessor<GenericData<int>>()!;
+        largeAccessor = AccessorProvider.FindAccessor<LargeData>()!;
 
-        var dataFactory = AccessorRegistry.FindFactory<Data>()!;
+        var dataFactory = AccessorProvider.FindFactory<Data>()!;
         classIntFactoryGet = dataFactory.CreateGetter<int>(nameof(Data.Id))!;
         classIntFactorySet = dataFactory.CreateSetter<int>(nameof(Data.Id))!;
         classStringFactoryGet = dataFactory.CreateGetter<string>(nameof(Data.Name))!;
         classStringFactorySet = dataFactory.CreateSetter<string>(nameof(Data.Name))!;
-        var structFactory = AccessorRegistry.FindFactory<StructData>()!;
+        var structFactory = AccessorProvider.FindFactory<StructData>()!;
         structFactoryGet = structFactory.CreateGetter<int>(nameof(StructData.Id))!;
         structFactorySet = structFactory.CreateSetter<int>(nameof(StructData.Id))!;
-        var genericFactory = AccessorRegistry.FindFactory<GenericData<int>>()!;
+        var genericFactory = AccessorProvider.FindFactory<GenericData<int>>()!;
         genericFactoryGet = genericFactory.CreateGetter<int>(nameof(GenericData<>.Value))!;
         genericFactorySet = genericFactory.CreateSetter<int>(nameof(GenericData<>.Value))!;
-        var largeFactory = AccessorRegistry.FindFactory<LargeData>()!;
+        var largeFactory = AccessorProvider.FindFactory<LargeData>()!;
         largeFactoryGet = largeFactory.CreateGetter<int>(nameof(LargeData.Value10))!;
         largeFactorySet = largeFactory.CreateSetter<int>(nameof(LargeData.Value10))!;
 
@@ -189,7 +189,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            var accessor = AccessorProvider.FindAccessor<Data>()!;
             v = accessor.GetValue(o, nameof(Data.Id));
         }
         return v;
@@ -326,7 +326,7 @@ public class AccessorBenchmark
         var o = classData;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            var accessor = AccessorProvider.FindAccessor<Data>()!;
             accessor.SetValue(o, nameof(Data.Id), 0);
         }
     }
@@ -430,7 +430,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            var accessor = AccessorProvider.FindAccessor<Data>()!;
             v = accessor.GetValue(o, nameof(Data.Name));
         }
         return v;
@@ -522,7 +522,7 @@ public class AccessorBenchmark
         var o = classData;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<Data>()!;
+            var accessor = AccessorProvider.FindAccessor<Data>()!;
             accessor.SetValue(o, nameof(Data.Name), "x");
         }
     }
@@ -614,7 +614,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<StructData>()!;
+            var accessor = AccessorProvider.FindAccessor<StructData>()!;
             v = accessor.GetValue(o, nameof(StructData.Id));
         }
         return v;
@@ -748,7 +748,7 @@ public class AccessorBenchmark
         var o = structBoxed;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<StructData>()!;
+            var accessor = AccessorProvider.FindAccessor<StructData>()!;
             accessor.SetValue(o, nameof(StructData.Id), 0);
         }
     }
@@ -816,7 +816,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
+            var accessor = AccessorProvider.FindAccessor<GenericData<int>>()!;
             v = accessor.GetValue(o, nameof(GenericData<>.Value));
         }
         return v;
@@ -908,7 +908,7 @@ public class AccessorBenchmark
         var o = generic;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
+            var accessor = AccessorProvider.FindAccessor<GenericData<int>>()!;
             accessor.SetValue(o, nameof(GenericData<>.Value), 0);
         }
     }
@@ -1000,7 +1000,7 @@ public class AccessorBenchmark
         object? v = null;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<LargeData>()!;
+            var accessor = AccessorProvider.FindAccessor<LargeData>()!;
             v = accessor.GetValue(o, nameof(LargeData.Value10));
         }
         return v;
@@ -1092,7 +1092,7 @@ public class AccessorBenchmark
         var o = large;
         for (var i = 0; i < N; i++)
         {
-            var accessor = AccessorRegistry.FindAccessor<LargeData>()!;
+            var accessor = AccessorProvider.FindAccessor<LargeData>()!;
             accessor.SetValue(o, nameof(LargeData.Value10), 0);
         }
     }
@@ -1184,14 +1184,14 @@ public class AccessorBenchmark
         IConstructor<Data>? v = null;
         for (var i = 0; i < N; i++)
         {
-            v = AccessorRegistry.FindConstructor<Data>();
+            v = AccessorProvider.FindConstructor<Data>();
             _ = o;
         }
         return v;
     }
 
     // ------------------------------------------------------------
-    // Resolve (AccessorProvider vs AccessorRegistry factory resolution)
+    // Resolve (compile time Get vs runtime Find factory resolution)
     // ------------------------------------------------------------
 
     [BenchmarkCategory("Factory-Resolve")]
@@ -1223,13 +1223,13 @@ public class AccessorBenchmark
 
     [BenchmarkCategory("Factory-Resolve")]
     [Benchmark(OperationsPerInvoke = N)]
-    public IAccessorFactory<Data>? FactoryResolveRegistry()
+    public IAccessorFactory<Data>? FactoryResolveFind()
     {
         var o = classData;
         IAccessorFactory<Data>? v = null;
         for (var i = 0; i < N; i++)
         {
-            v = AccessorRegistry.FindFactory<Data>();
+            v = AccessorProvider.FindFactory<Data>();
             _ = o;
         }
         return v;
@@ -1237,13 +1237,13 @@ public class AccessorBenchmark
 
     [BenchmarkCategory("Factory-Resolve")]
     [Benchmark(OperationsPerInvoke = N)]
-    public IAccessorFactory? FactoryResolveRegistryType()
+    public IAccessorFactory? FactoryResolveFindType()
     {
         var type = dataType;
         IAccessorFactory? v = null;
         for (var i = 0; i < N; i++)
         {
-            v = AccessorRegistry.FindFactory(type);
+            v = AccessorProvider.FindFactory(type);
         }
         return v;
     }

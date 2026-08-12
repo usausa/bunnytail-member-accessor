@@ -8,7 +8,7 @@ public class NameMismatchTest
     public void TestAccessorGetValueThrows()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<Data>();
+        var accessor = AccessorProvider.FindAccessor<Data>();
         Assert.NotNull(accessor);
 
         var data = new Data { Id = 1, Name = "abc" };
@@ -24,7 +24,7 @@ public class NameMismatchTest
     public void TestAccessorSetValueThrows()
     {
         // Arrange
-        var accessor = AccessorRegistry.FindAccessor<Data>();
+        var accessor = AccessorProvider.FindAccessor<Data>();
         Assert.NotNull(accessor);
 
         var data = new Data { Id = 1, Name = "abc" };
@@ -40,7 +40,7 @@ public class NameMismatchTest
     public void TestFactoryTypedCreateReturnsNull()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         // Act & Assert
@@ -52,7 +52,7 @@ public class NameMismatchTest
     public void TestFactoryObjectCreateReturnsNull()
     {
         // Arrange
-        var factory = AccessorRegistry.FindFactory<Data>();
+        var factory = AccessorProvider.FindFactory<Data>();
         Assert.NotNull(factory);
 
         // Act & Assert
