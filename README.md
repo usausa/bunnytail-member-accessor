@@ -56,11 +56,10 @@ Arity 0–16, including generic types.
 
 ```csharp
 var ctor = AccessorProvider.GetConstructor<Data>();
-var instance = ctor.Create();          // parameterless
-var instance2 = ctor.Create<int>(42);  // 1-arg constructor
+var instance = ctor.Create();
 
 var generic = AccessorProvider.GetConstructor<GenericHolder<int>>();
-var instance3 = generic.Create<int>(42);
+var instance2 = generic.Create<int>(42);
 ```
 
 Same-arity overloads are selected at runtime by argument type — pass the exact parameter type:
