@@ -8,9 +8,6 @@ using Microsoft.CodeAnalysis;
 
 using SourceGenerateHelper.Testing;
 
-// Driver-based harness for diagnostic scenarios.
-// The runtime-behaviour tests in this project cover generated code that actually works;
-// this covers the cases where generation is refused, which those cannot reach.
 internal static class GeneratorTestHelper
 {
     private static GeneratorTestRunner Runner => GeneratorTestRunner

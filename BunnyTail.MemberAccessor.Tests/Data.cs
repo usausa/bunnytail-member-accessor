@@ -1,9 +1,6 @@
-// Public fields are intentional test data for field accessor support
-#pragma warning disable CA1051
-#pragma warning disable SA1401
-// Fields are mutated through generated accessors
 #pragma warning disable IDE0044
-// Witness types are consumed via static interface members only
+#pragma warning disable SA1401
+#pragma warning disable CA1051
 #pragma warning disable CA1812
 namespace BunnyTail.MemberAccessor;
 

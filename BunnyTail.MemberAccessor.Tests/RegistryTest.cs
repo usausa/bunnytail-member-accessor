@@ -2,8 +2,6 @@ namespace BunnyTail.MemberAccessor;
 
 public class RegistryTest
 {
-    // The Type-based overloads exist for types only known at runtime; obtain the Type
-    // through an indirection to model that (and to avoid CA2263 in these tests).
     private static Type GetRuntimeType<T>() => typeof(T);
 
     [Fact]
