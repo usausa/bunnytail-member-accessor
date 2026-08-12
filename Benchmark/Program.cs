@@ -40,7 +40,6 @@ public sealed class BenchmarkConfig : ManualConfig
     }
 }
 
-// See BENCHMARK.md for the scenario / operation / processing-kind matrix.
 // Methods are listed fastest-predicted first:
 // Direct, AccessorCached, Accessor, Expression, Factory, ReflectionCached, Reflection.
 [Config(typeof(BenchmarkConfig))]
@@ -67,6 +66,10 @@ public class AccessorBenchmark
 
     // Cached IConstructor
     private IConstructor<Data> constructorCached = default!;
+
+    // Resolve targets
+    private IAccessorFactory<Data> factoryCached = default!;
+    private Type dataType = default!;
 
     // Cached IAccessor (object, name-based)
     private IAccessor dataAccessor = default!;
@@ -114,6 +117,8 @@ public class AccessorBenchmark
         largePi = typeof(LargeData).GetProperty(nameof(LargeData.Value10))!;
 
         constructorCached = AccessorRegistry.FindConstructor<Data>()!;
+        factoryCached = AccessorRegistry.FindFactory<Data>()!;
+        dataType = typeof(Data);
         dataAccessor = AccessorRegistry.FindAccessor<Data>()!;
         structAccessor = AccessorRegistry.FindAccessor<StructData>()!;
         genericAccessor = AccessorRegistry.FindAccessor<GenericData<int>>()!;
@@ -1159,6 +1164,20 @@ public class AccessorBenchmark
 
     [BenchmarkCategory("Constructor-Find")]
     [Benchmark(OperationsPerInvoke = N)]
+    public IConstructor<Data>? ConstructorFindProvider()
+    {
+        var o = classData;
+        IConstructor<Data>? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = AccessorProvider.GetConstructor<Data>();
+            _ = o;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Constructor-Find")]
+    [Benchmark(OperationsPerInvoke = N)]
     public IConstructor<Data>? ConstructorFind()
     {
         var o = classData;
@@ -1167,6 +1186,64 @@ public class AccessorBenchmark
         {
             v = AccessorRegistry.FindConstructor<Data>();
             _ = o;
+        }
+        return v;
+    }
+
+    // ------------------------------------------------------------
+    // Resolve (AccessorProvider vs AccessorRegistry factory resolution)
+    // ------------------------------------------------------------
+
+    [BenchmarkCategory("Factory-Resolve")]
+    [Benchmark(OperationsPerInvoke = N, Baseline = true)]
+    public IAccessorFactory<Data>? FactoryResolveCached()
+    {
+        var factory = factoryCached;
+        IAccessorFactory<Data>? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = factory;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Factory-Resolve")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public IAccessorFactory<Data>? FactoryResolveProvider()
+    {
+        var o = classData;
+        IAccessorFactory<Data>? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = AccessorProvider.GetFactory<Data>();
+            _ = o;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Factory-Resolve")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public IAccessorFactory<Data>? FactoryResolveRegistry()
+    {
+        var o = classData;
+        IAccessorFactory<Data>? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = AccessorRegistry.FindFactory<Data>();
+            _ = o;
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Factory-Resolve")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public IAccessorFactory? FactoryResolveRegistryType()
+    {
+        var type = dataType;
+        IAccessorFactory? v = null;
+        for (var i = 0; i < N; i++)
+        {
+            v = AccessorRegistry.FindFactory(type);
         }
         return v;
     }
@@ -1200,7 +1277,7 @@ public static class ExpressionHelper
 }
 
 [GenerateAccessor]
-public class Data
+public partial class Data
 {
     public int Id { get; set; }
 
@@ -1213,7 +1290,7 @@ public sealed class DataHolder
 }
 
 [GenerateAccessor]
-public record struct StructData
+public partial record struct StructData
 {
     public int Id { get; set; }
 
@@ -1222,13 +1299,13 @@ public record struct StructData
 
 [GenerateAccessor]
 [TypedAccessor(typeof(GenericData<int>))]
-public class GenericData<T>
+public partial class GenericData<T>
 {
     public T Value { get; set; } = default!;
 }
 
 [GenerateAccessor]
-public class LargeData
+public partial class LargeData
 {
     public int Value0 { get; set; }
 
