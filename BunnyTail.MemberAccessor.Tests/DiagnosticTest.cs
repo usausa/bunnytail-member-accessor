@@ -84,7 +84,7 @@ public class DiagnosticTest
             }
 
             [GenerateAccessorFor(typeof(IContract))]
-            public static partial class Witness
+            public static partial class Provider
             {
             }
             """);
@@ -108,7 +108,7 @@ public class DiagnosticTest
             }
 
             [GenerateAccessorFor(typeof(Data))]
-            public static partial class Witness
+            public static partial class Provider
             {
             }
             """);

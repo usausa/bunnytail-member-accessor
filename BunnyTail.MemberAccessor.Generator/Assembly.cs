@@ -1,8 +1,4 @@
-using System.Runtime.CompilerServices;
-
 [assembly: CLSCompliant(false)]
-
-[assembly: InternalsVisibleTo("BunnyTail.MemberAccessor.Tests")]
 
 // ReSharper disable ArrangeNamespaceBody
 // ReSharper disable CheckNamespace

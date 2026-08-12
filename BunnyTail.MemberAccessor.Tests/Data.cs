@@ -422,8 +422,8 @@ public class PlainGenericData<T>
     public PlainGenericData(T value) => Value = value;
 }
 
-// Witness type: accessor generation for types it does not own + IAccessorProvider implementations
+// Provider type: accessor generation for types it does not own + IAccessorProvider implementations
 [GenerateAccessorFor(typeof(PlainData))]
 [GenerateAccessorFor(typeof(PlainGenericData<int>))]
 [GenerateAccessorFor(typeof(Data))]
-internal sealed partial class AccessorWitness;
+internal sealed partial class AccessorProviders;
