@@ -32,15 +32,13 @@ setter(ref data, 123);
 var id = getter(ref data);
 ```
 
-The `Read` / `Write` extensions take the target by value, for use where `ref` cannot be applied:
+`Read` / `Write` take the target by value, for use where `ref` cannot be applied:
 
 ```csharp
 var list = new List<Data> { new() { Id = 1 } };
 var id = getter.Read(list[0]);
 setter.Write(list[0], 2);
 ```
-
-For value types the target must be a variable (local, field, array element). A write through a temporary copy, such as a property or a `List<T>` indexer result, is lost.
 
 ### Member Enumeration
 
@@ -54,7 +52,7 @@ foreach (var member in factory.Members)
 
 ### Constructor Accessor
 
-Arity 0–16 is supported, including generic types.
+Arity 0–16, including generic types.
 
 ```csharp
 var ctor = AccessorProvider.GetConstructor<Data>();
@@ -65,23 +63,22 @@ var generic = AccessorProvider.GetConstructor<GenericHolder<int>>();
 var instance3 = generic.Create<int>(42);
 ```
 
-For same-arity overloads the constructor is selected at runtime by the argument type. Pass the exact parameter type as the type argument:
+Same-arity overloads are selected at runtime by argument type — pass the exact parameter type:
 
 ```csharp
 // class Sample { Sample(int v); Sample(string v); }
 var ctor = AccessorProvider.GetConstructor<Sample>();
 var a = ctor.Create(42);      // -> Sample(int)
 var b = ctor.Create("text");  // -> Sample(string)
+var c = ctor.Create(1.0);     // -> NotSupportedException
 ```
 
-The non-generic `IConstructor` offers a reflection-style API taking an `object` array, which selects by argument count and the runtime type of each argument (`null` matches reference types and `Nullable<T>` parameters):
+Reflection-style, by `object` array:
 
 ```csharp
 var ctor = AccessorProvider.FindConstructor(type)!;
 var instance = (Data)ctor.CreateInstance(99, "hello");
 ```
-
-Both throw `NotSupportedException` when no constructor matches.
 
 ### Struct Support
 
@@ -98,6 +95,9 @@ var setX = factory.CreateSetter<int>(nameof(Point.X));
 var point = new Point();
 setX(ref point, 10);    // mutates in place, no boxing
 setX.Write(point, 20);  // extension: same syntax as class
+
+var list = new List<Point> { point };
+setX.Write(list[0], 30); // lost: the indexer returns a copy
 ```
 
 ## Attributes
@@ -121,11 +121,11 @@ public partial class Data
 }
 ```
 
-A `partial` type also implements `IAccessorProvider<T>` (and `IConstructorProvider<T>` when it has public constructors), which enables the compile-time `GetXxx` path.
+A `partial` type also implements `IAccessorProvider<T>` (and `IConstructorProvider<T>` if it has public constructors), enabling `GetXxx`.
 
 ### TypedAccessor
 
-`FindXxx` instantiates open generic types on demand with `MakeGenericType`, which is not AOT-safe. Pre-register the closed types the application uses; `GetXxx` needs no pre-registration.
+`FindXxx` instantiates open generic types with `MakeGenericType`, which is not AOT-safe. Pre-register the closed types used by the application; `GetXxx` needs no pre-registration.
 
 ```csharp
 [GenerateAccessor]
@@ -137,7 +137,7 @@ public partial class GenericData<T>
 }
 ```
 
-Assembly-level registration is also supported:
+Assembly level:
 
 ```csharp
 [assembly: TypedAccessor(typeof(GenericData<DateTime>))]
@@ -145,7 +145,7 @@ Assembly-level registration is also supported:
 
 ### AccessorMember
 
-Non-public members are excluded by default. `[AccessorMember]` opts one in, `Ignore = true` excludes one. Opted-in members use `UnsafeAccessor`, which for generic types requires .NET 9 or later.
+Non-public members are excluded by default. Opted-in members use `UnsafeAccessor`, which requires .NET 9 or later for generic types.
 
 ```csharp
 [GenerateAccessor]
@@ -163,7 +163,7 @@ public partial class HiddenData
 
 ### GenerateAccessorFor
 
-Generates accessors for types that cannot be annotated, such as BCL types or types in other assemblies. The assembly-level form is resolved with `FindXxx`:
+For types that cannot be annotated, such as BCL types or types in other assemblies. The assembly-level form is resolved with `FindXxx`:
 
 ```csharp
 [assembly: GenerateAccessorFor(typeof(Version))]
@@ -174,7 +174,7 @@ var factory = AccessorProvider.FindFactory<Version>()!;
 var getMajor = factory.CreateGetter<int>(nameof(Version.Major))!;
 ```
 
-On a `partial` class, that class implements `IAccessorProvider<T>` / `IConstructorProvider<T>` for each target, so external types can use `GetXxx` as well:
+On a `partial` class, that class implements the provider interfaces for each target, enabling `GetXxx`:
 
 ```csharp
 [GenerateAccessorFor(typeof(PlainData))]
@@ -185,8 +185,6 @@ var factory = AccessorProvider.GetFactory<PlainData, AccessorProviders>();
 ```
 
 ## Resolution
-
-`AccessorProvider` resolves accessors in two ways:
 
 ```csharp
 // Compile time, via static abstract members
@@ -205,19 +203,12 @@ var factory2 = AccessorProvider.FindFactory(typeof(Data));
 | Generic types on Native AOT | Any closed instantiation | Closed types need `[TypedAccessor]` |
 | Requirement | `partial` type with `[GenerateAccessor]`, or a provider class with `[GenerateAccessorFor]` | Type registered via attributes |
 
-Prefer `GetXxx` when the target type is statically known. Use `FindXxx` for `System.Type`-driven scenarios such as serialization and mapping frameworks, for non-`partial` target types, and for targets registered with the assembly-level `[GenerateAccessorFor]`.
-
-Speed is not a reason to choose between them: `FindXxx<T>()` measures the same as `GetXxx<T>()`. Only `FindXxx(Type)` reaches the dictionary, at roughly 16x the cost.
-
 ## Supported Members
 
-- Public instance properties and fields
-- `readonly` fields, read-only properties and `init`-only properties are readable only; their typed setter returns `null`
-- Properties inherited from base classes are flattened into the accessor
-- Non-public members opt in with `[AccessorMember]`
+- `readonly` fields and read-only / `init`-only properties are read-only (typed setter returns `null`)
+- Inherited properties are flattened
+- `record` / `record struct` are treated as class / struct
 - `static` members and indexers are not supported
-
-`class`, `struct`, `record`, `record struct` and open generic types are all supported.
 
 ## Benchmark
 
@@ -232,8 +223,6 @@ Job=MediumRun  IterationCount=15  LaunchCount=2
 WarmupCount=10
 ```
 
-Method name suffixes identify the access technique:
-
 | Suffix | Technique |
 | --- | --- |
 | `Direct` | Hand-written property access (baseline) |
@@ -245,11 +234,7 @@ Method name suffixes identify the access technique:
 | `ReflectionCached` | Cached `PropertyInfo` |
 | `Reflection` | `GetProperty` followed by `GetValue` / `SetValue` on every call |
 
-Means below roughly 0.5 ns sit at the measurement floor of this machine, where loop codegen differences dominate. Do not read significance into gaps at that scale, including cases where a generated accessor measures slightly faster than `Direct`.
-
 ### Resolution Cost
-
-Cost of obtaining the accessor itself, excluding member access.
 
 | Method | Mean | Error | StdDev | Ratio | Code Size | Allocated |
 |--------------------------- |-----------:|----------:|----------:|------:|----------:|----------:|
@@ -262,11 +247,7 @@ Cost of obtaining the accessor itself, excluding member access.
 | ConstructorFindProvider | 0.3218 ns | 0.0013 ns | 0.0019 ns | 1.00 | 32 B | - |
 | ConstructorFind | 0.3273 ns | 0.0043 ns | 0.0061 ns | 1.02 | 1,006 B | - |
 
-`GetFactory<T>()`, `FindFactory<T>()` and a cached field are indistinguishable, because the generic overload is served by a per-type static cache. `FindFactory(Type)` is the only path that reaches the dictionary.
-
 ### Member Access
-
-Full results for a class with an `int` property.
 
 | Method | Mean | Error | StdDev | Ratio | Code Size | Allocated |
 |---------------------------- |-----------:|----------:|----------:|------:|----------:|----------:|
@@ -288,11 +269,7 @@ Full results for a class with an `int` property.
 | ClassIntSetReflectionCached | 7.9565 ns | 0.0847 ns | 0.1268 ns | 38.23 | 8,557 B | 24 B |
 | ClassIntSetReflection | 13.0950 ns | 0.1302 ns | 0.1867 ns | 62.92 | 8,377 B | 24 B |
 
-The typed delegate matches hand-written access and allocates nothing. The object-based `IAccessor` allocates 24 B per call when the member is a value type, because the value is boxed into `object?`.
-
 ### Type Scenarios
-
-Mean per operation across declaring-type kinds and member types. The generated typed delegate stays at the level of direct access regardless of the scenario, while reflection scales with the complexity of the type.
 
 | Scenario | Operation | Direct | Factory | AccessorCached | ReflectionCached | Reflection |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -307,11 +284,7 @@ Mean per operation across declaring-type kinds and member types. The generated t
 | large class / int | Get | 0.3212 ns | 0.3236 ns | 2.3160 ns | 9.5359 ns | 17.2085 ns |
 | large class / int | Set | 0.3219 ns | 0.3230 ns | 2.3935 ns | 13.1951 ns | 21.5638 ns |
 
-`class / string` is the one scenario where `AccessorCached` is also at the floor: a reference-typed member needs no boxing when returned as `object?`.
-
 ### Ref-Free Extensions
-
-The `Unsafe.AsRef` used by `Read` / `Write` is fully inlined: the disassembly of each pair below is identical instruction for instruction, so the convenience is free for classes and structs alike.
 
 | Method | Mean | Error | StdDev | Code Size | Allocated |
 |----------------------------- |----------:|----------:|----------:|----------:|----------:|
@@ -326,5 +299,3 @@ The `Unsafe.AsRef` used by `Read` / `Write` is fully inlined: the disassembly of
 | | | | | | |
 | StructSetFactory | 0.2114 ns | 0.0020 ns | 0.0030 ns | 179 B | - |
 | StructSetFactoryExtension | 0.2119 ns | 0.0019 ns | 0.0029 ns | 179 B | - |
-
-`ClassIntPropertyGetTemp` is the workaround the extension replaces: copying a property into a temporary local so it can be passed by `ref`.
