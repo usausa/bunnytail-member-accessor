@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor.Generator.Models;
 
-internal sealed record WitnessModel(
+internal sealed record ProviderModel(
     string Namespace,
     string ClassName,
     string TypeKeyword,
@@ -12,5 +12,5 @@ internal sealed record WitnessModel(
 internal sealed record ExternalModel(
     TypeModel Type,
     ClosedGenericModel? ClosedGeneric,
-    WitnessModel? Witness,
+    ProviderModel? Provider,
     bool TargetHasGenerateAccessor);

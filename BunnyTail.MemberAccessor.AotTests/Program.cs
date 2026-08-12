@@ -187,25 +187,18 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 11. IAccessorProvider / IConstructorProvider static abstract path (registry-free)
 //--------------------------------------------------------------------------------
 {
-    static IAccessorFactory<T> GetFactory<T>()
-        where T : IAccessorProvider<T>
-        => T.AccessorFactory;
-    static IConstructor<T> GetConstructor<T>()
-        where T : IConstructorProvider<T>
-        => T.Constructor;
-
-    var factory = GetFactory<Data>();
+    var factory = AccessorProvider.GetFactory<Data>();
     var data = new Data { Id = 1, Name = "a" };
     var getId = factory.CreateGetter<int>(nameof(Data.Id));
     Assert(getId is not null, "IAccessorProvider factory CreateGetter returned null");
     Assert(getId!(ref data) == 1, "IAccessorProvider typed getter");
 
-    var ctor = GetConstructor<CtorData>();
+    var ctor = AccessorProvider.GetConstructor<CtorData>();
     var created = ctor.Create(5, "c");
     Assert(created.Id == 5 && created.Name == "c", "IConstructorProvider Create");
 
     // Closed generics flow through the type system without pre-registration
-    var genericFactory = GetFactory<GenericData<long>>();
+    var genericFactory = AccessorProvider.GetFactory<GenericData<long>>();
     var genericData = new GenericData<long> { Value = 9 };
     var getValue = genericFactory.CreateGetter<long>(nameof(GenericData<>.Value));
     Assert(getValue is not null, "IAccessorProvider generic CreateGetter returned null");
@@ -226,7 +219,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 }
 
 //--------------------------------------------------------------------------------
-// 13. Read/Write extensions (ref-free access for reference types, uses Unsafe.AsRef)
+// 13. Read/Write extensions (ref-free access via Unsafe.AsRef)
 //--------------------------------------------------------------------------------
 {
     var factory = AccessorRegistry.FindFactory<Data>();
@@ -243,6 +236,16 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 
     setName!.Write(list[0], "b");
     Assert(list[0].Name == "b", "Extension Write via list element");
+
+    // Value types: a variable is mutated in place
+    var structFactory = AccessorRegistry.FindFactory<StructData>();
+    Assert(structFactory is not null, "FindFactory<StructData> returned null");
+    var setId = structFactory!.CreateSetter<int>(nameof(StructData.Id));
+    Assert(setId is not null, "CreateSetter<int>(Id) returned null for struct");
+
+    var structData = new StructData { Id = 1, Name = "s" };
+    setId!.Write(structData, 2);
+    Assert(structData.Id == 2, "Extension Write struct variable in place");
     Console.WriteLine("  [OK] Read/Write extensions");
 }
 

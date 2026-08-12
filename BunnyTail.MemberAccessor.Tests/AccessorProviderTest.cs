@@ -2,24 +2,12 @@ namespace BunnyTail.MemberAccessor;
 
 public class AccessorProviderTest
 {
-    private static IAccessor GetAccessor<T>()
-        where T : IAccessorProvider<T>
-        => T.Accessor;
-
-    private static IAccessorFactory<T> GetFactory<T>()
-        where T : IAccessorProvider<T>
-        => T.AccessorFactory;
-
-    private static IConstructor<T> GetConstructor<T>()
-        where T : IConstructorProvider<T>
-        => T.Constructor;
-
     [Fact]
     public void TestProviderClass()
     {
         // Arrange
-        var accessor = GetAccessor<Data>();
-        var factory = GetFactory<Data>();
+        var accessor = AccessorProvider.GetAccessor<Data>();
+        var factory = AccessorProvider.GetFactory<Data>();
 
         var data = new Data { Id = 1, Name = "abc" };
 
@@ -39,16 +27,16 @@ public class AccessorProviderTest
     [Fact]
     public void TestProviderSharesRegistryInstance()
     {
-        Assert.Same(AccessorRegistry.FindAccessor<Data>(), GetAccessor<Data>());
-        Assert.Same(AccessorRegistry.FindFactory<Data>(), GetFactory<Data>());
-        Assert.Same(AccessorRegistry.FindConstructor<CtorData2>(), GetConstructor<CtorData2>());
+        Assert.Same(AccessorRegistry.FindAccessor<Data>(), AccessorProvider.GetAccessor<Data>());
+        Assert.Same(AccessorRegistry.FindFactory<Data>(), AccessorProvider.GetFactory<Data>());
+        Assert.Same(AccessorRegistry.FindConstructor<CtorData2>(), AccessorProvider.GetConstructor<CtorData2>());
     }
 
     [Fact]
     public void TestProviderStruct()
     {
         // Arrange
-        var factory = GetFactory<StructData>();
+        var factory = AccessorProvider.GetFactory<StructData>();
 
         var data = new StructData { Id = 1, Name = "abc" };
 
@@ -65,7 +53,7 @@ public class AccessorProviderTest
     public void TestProviderRecord()
     {
         // Arrange
-        var factory = GetFactory<RecordData>();
+        var factory = AccessorProvider.GetFactory<RecordData>();
 
         var data = new RecordData { Id = 1, Name = "abc" };
 
@@ -79,7 +67,7 @@ public class AccessorProviderTest
     public void TestProviderClosedGeneric()
     {
         // Closed generics flow through the type system without registry lookup or pre-registration
-        var factory = GetFactory<GenericData<Guid>>();
+        var factory = AccessorProvider.GetFactory<GenericData<Guid>>();
 
         var value = Guid.NewGuid();
         var data = new GenericData<Guid> { Value = value };
@@ -93,7 +81,7 @@ public class AccessorProviderTest
     public void TestConstructorProvider()
     {
         // Arrange
-        var ctor = GetConstructor<CtorData2>();
+        var ctor = AccessorProvider.GetConstructor<CtorData2>();
 
         // Act
         var instance = ctor.Create(1, "abc");
@@ -107,7 +95,7 @@ public class AccessorProviderTest
     public void TestConstructorProviderGeneric()
     {
         // Arrange
-        var ctor = GetConstructor<GenericHolder<Guid>>();
+        var ctor = AccessorProvider.GetConstructor<GenericHolder<Guid>>();
 
         var value = Guid.NewGuid();
 

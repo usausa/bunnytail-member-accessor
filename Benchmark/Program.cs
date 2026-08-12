@@ -645,6 +645,20 @@ public class AccessorBenchmark
 
     [BenchmarkCategory("Struct-Get")]
     [Benchmark(OperationsPerInvoke = N)]
+    public int StructGetFactoryExtension()
+    {
+        var s = structData;
+        var get = structFactoryGet;
+        var v = 0;
+        for (var i = 0; i < N; i++)
+        {
+            v = get.Read(s);
+        }
+        return v;
+    }
+
+    [BenchmarkCategory("Struct-Get")]
+    [Benchmark(OperationsPerInvoke = N)]
     public object? StructGetReflectionCached()
     {
         var o = structBoxed;
@@ -693,6 +707,19 @@ public class AccessorBenchmark
         for (var i = 0; i < N; i++)
         {
             set(ref s, 0);
+        }
+        structData = s;
+    }
+
+    [BenchmarkCategory("Struct-Set")]
+    [Benchmark(OperationsPerInvoke = N)]
+    public void StructSetFactoryExtension()
+    {
+        var s = structData;
+        var set = structFactorySet;
+        for (var i = 0; i < N; i++)
+        {
+            set.Write(s, 0);
         }
         structData = s;
     }

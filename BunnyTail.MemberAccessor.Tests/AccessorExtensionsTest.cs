@@ -117,4 +117,67 @@ public class AccessorExtensionsTest
         // Act & Assert
         Assert.Equal(getName(ref data), getName.Read(data));
     }
+
+    [Fact]
+    public void TestStructReadWriteViaVariable()
+    {
+        // Arrange
+        var factory = AccessorRegistry.FindFactory<StructData>();
+        Assert.NotNull(factory);
+
+        var getId = factory.CreateGetter<int>(nameof(StructData.Id));
+        var setId = factory.CreateSetter<int>(nameof(StructData.Id));
+        Assert.NotNull(getId);
+        Assert.NotNull(setId);
+
+        var data = new StructData { Id = 1, Name = "abc" };
+
+        // Act & Assert
+        Assert.Equal(1, getId.Read(data));
+
+        // Act
+        setId.Write(data, 99);
+
+        // Assert
+        Assert.Equal(99, data.Id);
+    }
+
+    [Fact]
+    public void TestStructWriteViaArrayElement()
+    {
+        // Arrange
+        var factory = AccessorRegistry.FindFactory<StructData>();
+        Assert.NotNull(factory);
+
+        var setId = factory.CreateSetter<int>(nameof(StructData.Id));
+        Assert.NotNull(setId);
+
+        var items = new[] { new StructData { Id = 1, Name = "a" } };
+
+        // Act
+        setId.Write(items[0], 99);
+
+        // Assert
+        Assert.Equal(99, items[0].Id);
+    }
+
+    [Fact]
+    public void TestStructWriteToTemporaryCopyIsLost()
+    {
+        // Arrange
+        var factory = AccessorRegistry.FindFactory<StructData>();
+        Assert.NotNull(factory);
+
+        var setId = factory.CreateSetter<int>(nameof(StructData.Id));
+        Assert.NotNull(setId);
+
+        var list = new List<StructData> { new() { Id = 1, Name = "a" } };
+
+        // Act
+        // List<T> indexer returns a copy
+        setId.Write(list[0], 99);
+
+        // Assert
+        Assert.Equal(1, list[0].Id);
+    }
 }

@@ -361,8 +361,11 @@ public partial record struct StructHiddenData
 {
     public int Id { get; set; }
 
+    // ReSharper disable once FieldCanBeMadeReadOnly.Local
+#pragma warning disable IDE0044
     [AccessorMember]
     private int hidden;
+#pragma warning restore IDE0044
 
     public StructHiddenData(int id, int hidden)
     {
@@ -379,7 +382,10 @@ public partial record struct StructHiddenData
 public partial class GenericHiddenData<T>
 {
     [AccessorMember]
+    // ReSharper disable once FieldCanBeMadeReadOnly.Local
+#pragma warning disable IDE0044
     private T hidden = default!;
+#pragma warning restore IDE0044
 
     public T ReadHidden() => hidden;
 }

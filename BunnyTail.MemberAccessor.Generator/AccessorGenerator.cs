@@ -339,10 +339,10 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var compilation = context.SemanticModel.Compilation;
         var supportsGenericUnsafe = SupportsGenericUnsafeAccessor(context.TargetNode.SyntaxTree);
 
-        // Witness type information
-        var witnessSymbol = context.TargetSymbol as INamedTypeSymbol;
-        var witnessIsPartial = (context.TargetNode is TypeDeclarationSyntax typeSyntax) && typeSyntax.Modifiers.Any(SyntaxKind.PartialKeyword);
-        var witnessNotPartialReported = false;
+        // Provider type information
+        var providerSymbol = context.TargetSymbol as INamedTypeSymbol;
+        var providerIsPartial = (context.TargetNode is TypeDeclarationSyntax typeSyntax) && typeSyntax.Modifiers.Any(SyntaxKind.PartialKeyword);
+        var providerNotPartialReported = false;
 
         var attributes = context.TargetSymbol.GetAttributes().Where(static x => x.AttributeClass?.ToDisplayString() == GenerateAccessorForAttributeName);
         foreach (var data in attributes)
@@ -390,19 +390,19 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 closedGeneric = new ClosedGenericModel(ns, target.GetClassName(), new EquatableArray<string>(typeArguments));
             }
 
-            // Witness implementation is only possible for closed types
-            WitnessModel? witness = null;
+            // Provider implementation is only possible for closed types
+            ProviderModel? provider = null;
             var closedTarget = !target.IsGenericType || (closedGeneric is not null);
-            if ((witnessSymbol is not null) && closedTarget)
+            if ((providerSymbol is not null) && closedTarget)
             {
-                if (witnessIsPartial)
+                if (providerIsPartial)
                 {
-                    witness = CreateWitnessModel(witnessSymbol, typeModel, closedGeneric);
+                    provider = CreateProviderModel(providerSymbol, typeModel, closedGeneric);
                 }
-                else if (!witnessNotPartialReported)
+                else if (!providerNotPartialReported)
                 {
-                    witnessNotPartialReported = true;
-                    list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.TypeNotPartial, location, witnessSymbol.Name)));
+                    providerNotPartialReported = true;
+                    list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.TypeNotPartial, location, providerSymbol.Name)));
                 }
             }
 
@@ -411,18 +411,18 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.AccessorAlreadyGenerated, location, target.Name)));
             }
 
-            list.Add(Results.Success(new ExternalModel(typeModel, closedGeneric, witness, hasGenerateAccessor)));
+            list.Add(Results.Success(new ExternalModel(typeModel, closedGeneric, provider, hasGenerateAccessor)));
         }
 
         return new EquatableArray<Result<ExternalModel>>(list.ToArray());
     }
 
-    private static WitnessModel CreateWitnessModel(INamedTypeSymbol witnessSymbol, TypeModel typeModel, ClosedGenericModel? closedGeneric)
+    private static ProviderModel CreateProviderModel(INamedTypeSymbol providerSymbol, TypeModel typeModel, ClosedGenericModel? closedGeneric)
     {
-        var witnessNs = String.IsNullOrEmpty(witnessSymbol.ContainingNamespace.Name) ? string.Empty : witnessSymbol.ContainingNamespace.ToDisplayString();
-        var witnessKeyword = witnessSymbol.IsRecord
-            ? (witnessSymbol.IsValueType ? "record struct" : "record")
-            : (witnessSymbol.IsValueType ? "struct" : "class");
+        var providerNs = String.IsNullOrEmpty(providerSymbol.ContainingNamespace.Name) ? string.Empty : providerSymbol.ContainingNamespace.ToDisplayString();
+        var providerKeyword = providerSymbol.IsRecord
+            ? (providerSymbol.IsValueType ? "record struct" : "record")
+            : (providerSymbol.IsValueType ? "struct" : "class");
 
         string targetName;
         string accessorName;
@@ -449,10 +449,10 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 : string.Empty;
         }
 
-        return new WitnessModel(
-            witnessNs,
-            witnessSymbol.GetClassName(),
-            witnessKeyword,
+        return new ProviderModel(
+            providerNs,
+            providerSymbol.GetClassName(),
+            providerKeyword,
             targetName,
             accessorName,
             factoryName,
@@ -580,7 +580,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         context.CancellationToken.ThrowIfCancellationRequested();
 
         var emitted = new HashSet<string>(typeKeys, StringComparer.Ordinal);
-        var witnessEmitted = new HashSet<string>(StringComparer.Ordinal);
+        var providerEmitted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var external in externals.SelectMany(static x => x.SelectValue()))
         {
             if (!external.TargetHasGenerateAccessor && emitted.Add(MakeTypeKey(external.Type)))
@@ -592,15 +592,15 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 context.AddSource(filename, SourceText.From(builder.ToString(), Encoding.UTF8));
             }
 
-            if (external.Witness is { } witness)
+            if (external.Provider is { } provider)
             {
-                var witnessKey = $"{witness.Namespace}/{witness.ClassName}::{witness.TargetTypeName}";
-                if (witnessEmitted.Add(witnessKey))
+                var providerKey = $"{provider.Namespace}/{provider.ClassName}::{provider.TargetTypeName}";
+                if (providerEmitted.Add(providerKey))
                 {
                     var builder = new SourceBuilder();
-                    BuildWitnessSource(builder, witness);
+                    BuildProviderSource(builder, provider);
 
-                    var filename = MakeWitnessFilename(witness);
+                    var filename = MakeProviderFilename(provider);
                     context.AddSource(filename, SourceText.From(builder.ToString(), Encoding.UTF8));
                 }
             }
@@ -1222,33 +1222,33 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.EndScope();
     }
 
-    private static void BuildWitnessSource(SourceBuilder builder, WitnessModel witness)
+    private static void BuildProviderSource(SourceBuilder builder, ProviderModel provider)
     {
         builder.AutoGenerated();
         builder.EnableNullable();
         builder.NewLine();
 
-        if (!String.IsNullOrEmpty(witness.Namespace))
+        if (!String.IsNullOrEmpty(provider.Namespace))
         {
-            builder.Namespace(witness.Namespace);
+            builder.Namespace(provider.Namespace);
             builder.NewLine();
         }
 
-        var hasConstructor = !String.IsNullOrEmpty(witness.ConstructorName);
+        var hasConstructor = !String.IsNullOrEmpty(provider.ConstructorName);
 
         builder.Indent()
             .Append("partial ")
-            .Append(witness.TypeKeyword)
+            .Append(provider.TypeKeyword)
             .Append(' ')
-            .Append(witness.ClassName)
+            .Append(provider.ClassName)
             .Append(" : global::BunnyTail.MemberAccessor.IAccessorProvider<")
-            .Append(witness.TargetTypeName)
+            .Append(provider.TargetTypeName)
             .Append('>');
         if (hasConstructor)
         {
             builder
                 .Append(", global::BunnyTail.MemberAccessor.IConstructorProvider<")
-                .Append(witness.TargetTypeName)
+                .Append(provider.TargetTypeName)
                 .Append('>');
         }
         builder.NewLine();
@@ -1256,20 +1256,20 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         builder.Indent()
             .Append("static global::BunnyTail.MemberAccessor.IAccessor global::BunnyTail.MemberAccessor.IAccessorProvider<")
-            .Append(witness.TargetTypeName)
+            .Append(provider.TargetTypeName)
             .Append(">.Accessor => ")
-            .Append(witness.AccessorName)
+            .Append(provider.AccessorName)
             .Append(".Instance;")
             .NewLine();
         builder.NewLine();
 
         builder.Indent()
             .Append("static global::BunnyTail.MemberAccessor.IAccessorFactory<")
-            .Append(witness.TargetTypeName)
+            .Append(provider.TargetTypeName)
             .Append("> global::BunnyTail.MemberAccessor.IAccessorProvider<")
-            .Append(witness.TargetTypeName)
+            .Append(provider.TargetTypeName)
             .Append(">.AccessorFactory => ")
-            .Append(witness.FactoryName)
+            .Append(provider.FactoryName)
             .Append(".Instance;")
             .NewLine();
 
@@ -1278,11 +1278,11 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             builder.NewLine();
             builder.Indent()
                 .Append("static global::BunnyTail.MemberAccessor.IConstructor<")
-                .Append(witness.TargetTypeName)
+                .Append(provider.TargetTypeName)
                 .Append("> global::BunnyTail.MemberAccessor.IConstructorProvider<")
-                .Append(witness.TargetTypeName)
+                .Append(provider.TargetTypeName)
                 .Append(">.Constructor => ")
-                .Append(witness.ConstructorName)
+                .Append(provider.ConstructorName)
                 .Append(".Instance;")
                 .NewLine();
         }
@@ -1499,19 +1499,19 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         return buffer.ToString();
     }
 
-    private static string MakeWitnessFilename(WitnessModel witness)
+    private static string MakeProviderFilename(ProviderModel provider)
     {
         var buffer = new StringBuilder();
 
-        if (!String.IsNullOrEmpty(witness.Namespace))
+        if (!String.IsNullOrEmpty(provider.Namespace))
         {
-            buffer.Append(witness.Namespace.Replace('.', '_'));
+            buffer.Append(provider.Namespace.Replace('.', '_'));
             buffer.Append('_');
         }
 
-        buffer.Append(OpenNamePart(witness.ClassName));
+        buffer.Append(OpenNamePart(provider.ClassName));
         buffer.Append("_Provider_");
-        foreach (var c in witness.TargetTypeName)
+        foreach (var c in provider.TargetTypeName)
         {
             buffer.Append(Char.IsLetterOrDigit(c) ? c : '_');
         }
