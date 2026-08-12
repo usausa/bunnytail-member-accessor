@@ -117,7 +117,6 @@ public class AccessorMemberTest
         var factory = AccessorRegistry.FindFactory<HiddenData>();
         Assert.NotNull(factory);
 
-        // public getter + private setter with [AccessorMember]: both usable
         var get = factory.CreateGetter<int>(nameof(HiddenData.Score));
         var set = factory.CreateSetter<int>(nameof(HiddenData.Score));
         Assert.NotNull(get);

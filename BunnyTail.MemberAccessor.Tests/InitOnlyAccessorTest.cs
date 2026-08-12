@@ -34,7 +34,6 @@ public class InitOnlyAccessorTest
         Assert.NotNull(factory);
 
         // Act & Assert
-        // init-only setters cannot be assigned after initialization, so they are treated as read-only
         Assert.Null(factory.CreateSetter<string>(nameof(InitOnlyData.Name)));
         Assert.Null(factory.CreateSetter(nameof(InitOnlyData.Name)));
     }

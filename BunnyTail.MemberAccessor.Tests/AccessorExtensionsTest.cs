@@ -22,8 +22,6 @@ public class AccessorExtensionsTest
         var holder = new Holder { Item = new Data { Id = 1, Name = "abc" } };
 
         // Act & Assert
-        // A property is not a variable, so it cannot be passed to a ref parameter directly.
-        // The extensions accept it because reference types are passed by value.
         Assert.Equal("abc", getName.Read(holder.Item));
 
         // Act
@@ -48,7 +46,6 @@ public class AccessorExtensionsTest
         var list = new List<Data> { new() { Id = 1, Name = "abc" } };
 
         // Act & Assert
-        // List<T> indexer is a property, so ref list[0] is not allowed
         Assert.Equal(1, getId.Read(list[0]));
 
         // Act
@@ -72,8 +69,6 @@ public class AccessorExtensionsTest
         var alias = data;
 
         // Act
-        // The target is passed by value, but the delegate mutates through the reference,
-        // so no write-back is required and every alias observes the change.
         setId.Write(data, 99);
 
         // Assert
@@ -98,7 +93,6 @@ public class AccessorExtensionsTest
         };
 
         // Act
-        // foreach variables are read-only, so they cannot be passed by ref
         foreach (var item in items)
         {
             setId.Write(item, 0);

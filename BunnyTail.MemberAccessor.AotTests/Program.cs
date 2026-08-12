@@ -75,7 +75,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     object boxed = new StructData { Id = 7, Name = "s" };
     Assert(Equals(accessor!.GetValue(boxed, nameof(StructData.Id)), 7), "Struct GetValue Id");
 
-    // SetValue mutates the boxed instance in place (Unsafe.Unbox).
+    // SetValue mutates the boxed instance in place (Unsafe.Unbox)
     accessor.SetValue(boxed, nameof(StructData.Id), 8);
     Assert(((StructData)boxed).Id == 8, "Struct SetValue Id (boxed)");
     Console.WriteLine("  [OK] Value type accessor (boxed)");
@@ -204,7 +204,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     var created = ctor.Create(5, "c");
     Assert(created.Id == 5 && created.Name == "c", "IConstructorProvider Create");
 
-    // Closed generic flows through the type system: works without pre-registration
+    // Closed generics flow through the type system without pre-registration
     var genericFactory = GetFactory<GenericData<long>>();
     var genericData = new GenericData<long> { Value = 9 };
     var getValue = genericFactory.CreateGetter<long>(nameof(GenericData<>.Value));
@@ -217,9 +217,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 // 12. Unregistered type lookup (module-initializer fallback must not throw on AOT)
 //--------------------------------------------------------------------------------
 {
-    // On a lookup miss the registry forces the target module initializer via
-    // RuntimeHelpers.RunModuleConstructor; on Native AOT this may be unsupported
-    // and must be swallowed, resolving to null instead of crashing.
+    // RunModuleConstructor on a lookup miss may be unsupported on Native AOT and must resolve to null instead of throwing
     static Type GetRuntimeType<T>() => typeof(T);
 
     Assert(AccessorRegistry.FindAccessor(GetRuntimeType<Uri>()) is null, "Unregistered FindAccessor(Type) should be null");
@@ -239,7 +237,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(getName is not null, "CreateGetter<string>(Name) returned null");
     Assert(setName is not null, "CreateSetter<string>(Name) returned null");
 
-    // A list element is a property, so it cannot be passed by ref directly.
+    // A list element is a property, so it cannot be passed by ref directly
     var list = new List<Data> { new() { Id = 1, Name = "a" } };
     Assert(getName!.Read(list[0]) == "a", "Extension Read via list element");
 

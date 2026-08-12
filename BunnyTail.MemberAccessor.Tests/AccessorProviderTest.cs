@@ -39,7 +39,6 @@ public class AccessorProviderTest
     [Fact]
     public void TestProviderSharesRegistryInstance()
     {
-        // Registry and IAccessorProvider expose the same singleton instances
         Assert.Same(AccessorRegistry.FindAccessor<Data>(), GetAccessor<Data>());
         Assert.Same(AccessorRegistry.FindFactory<Data>(), GetFactory<Data>());
         Assert.Same(AccessorRegistry.FindConstructor<CtorData2>(), GetConstructor<CtorData2>());
@@ -79,8 +78,7 @@ public class AccessorProviderTest
     [Fact]
     public void TestProviderClosedGeneric()
     {
-        // Closed generic instantiations flow through the type system:
-        // no registry, no MakeGenericType, works even for type arguments never pre-registered.
+        // Closed generics flow through the type system without registry lookup or pre-registration
         var factory = GetFactory<GenericData<Guid>>();
 
         var value = Guid.NewGuid();

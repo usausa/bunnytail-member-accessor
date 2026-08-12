@@ -102,7 +102,7 @@ public class MembersTest
         Assert.True(readOnly.CanRead);
         Assert.False(readOnly.CanWrite);
 
-        // Public getter, non-public setter: only the public accessor counts.
+        // Public getter, non-public setter: only the public accessor counts
         var readPublicWritePrivate = members.First(m => m.Name == nameof(FilterData.ReadPublicWritePrivate));
         Assert.True(readPublicWritePrivate.CanRead);
         Assert.False(readPublicWritePrivate.CanWrite);

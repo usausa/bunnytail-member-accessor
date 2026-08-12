@@ -7,8 +7,7 @@ public class RegistryTest
     [Fact]
     public void TestUnregisteredTypeReturnsNull()
     {
-        // Lookup misses force the module initializer of the target assembly and retry.
-        // Types without accessors must still resolve to null without throwing.
+        // Lookup misses run the target module initializer and must still resolve to null without throwing
         var type = GetRuntimeType<Uri>();
         Assert.Null(AccessorRegistry.FindAccessor(type));
         Assert.Null(AccessorRegistry.FindFactory(type));
