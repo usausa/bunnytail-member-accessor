@@ -210,7 +210,7 @@ var factory = AccessorProvider.GetFactory<PlainData, AccessorProviders>();
 
 ## AccessorProvider vs AccessorRegistry
 
-Accessors can be resolved in two ways. Prefer `AccessorProvider` whenever the target type is statically known — it resolves at compile time, avoids the dictionary lookup and never returns `null`:
+Accessors can be resolved in two ways. Prefer `AccessorProvider` whenever the target type is statically known — it resolves at compile time and never returns `null`:
 
 ```csharp
 // Compile-time resolution via static abstract members (always succeeds)
@@ -223,13 +223,15 @@ var factory2 = AccessorRegistry.FindFactory(typeof(Data));
 
 | | `AccessorProvider` | `AccessorRegistry` |
 | --- | --- | --- |
-| Resolution | Compile-time via static abstract members | Runtime dictionary lookup |
+| Resolution | Compile-time via static abstract members | Static per-type cache for `FindXxx<T>()`, dictionary lookup for `FindXxx(Type)` |
 | Result | Non-null (guaranteed by generic constraint) | Nullable (`null` when not registered) |
-| `System.Type`-based lookup | ❌ Generic type argument only | ✅ `FindFactory(type)` / `FindConstructor(type)` |
+| `System.Type`-based lookup | ❌ Generic type argument only | ✅ `FindAccessor(type)` / `FindFactory(type)` / `FindConstructor(type)` |
 | Generic types on Native AOT | Any closed instantiation works without pre-registration | Closed types must be pre-registered with `[TypedAccessor]` |
 | Requirement | `partial` type with `[GenerateAccessor]`, or a provider class with `[GenerateAccessorFor]` | Type registered via attributes |
 
 Use `AccessorRegistry` only where the provider path is not available: `System.Type`-driven scenarios such as serialization and mapping frameworks, non-`partial` target types, and targets registered with the assembly-level `[GenerateAccessorFor]`.
+
+Resolution speed is not a reason to choose between them. The generic `FindXxx<T>()` overloads are backed by a per-type static cache and measure the same as the provider; only the `Type`-based overloads pay for the dictionary lookup, which is roughly 16x more expensive (see Benchmark). Cache the resolved accessor in a field when resolving by `Type` on a hot path.
 
 ## Support Matrix
 
@@ -257,63 +259,109 @@ Use `AccessorRegistry` only where the provider path is not available: `System.Ty
 ## Benchmark
 
 ```
-BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.7171/25H2/2025Update/HudsonValley2)
-AMD Ryzen 9 5900X 3.70GHz, 1 CPU, 24 logical and 12 physical cores
-.NET SDK 10.0.100
-  [Host]    : .NET 10.0.0 (10.0.0, 10.0.25.52411), X64 RyuJIT x86-64-v3
-  MediumRun : .NET 10.0.0 (10.0.0, 10.0.25.52411), X64 RyuJIT x86-64-v3
+BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8973/25H2/2025Update/HudsonValley2)
+AMD Ryzen AI 9 HX 370 w/ Radeon 890M 2.00GHz, 1 CPU, 24 logical and 12 physical cores
+.NET SDK 10.0.302
+  [Host]    : .NET 10.0.10 (10.0.10, 10.0.1026.32716), X64 RyuJIT x86-64-v4
+  MediumRun : .NET 10.0.10 (10.0.10, 10.0.1026.32716), X64 RyuJIT x86-64-v4
 
-Job=MediumRun  IterationCount=15  LaunchCount=2  
-WarmupCount=10  
+Job=MediumRun  IterationCount=15  LaunchCount=2
+WarmupCount=10
 ```
-| Method               | Mean       | Error     | StdDev    | Min        | Max        | P90        | Code Size | Gen0   | Allocated |
-|--------------------- |-----------:|----------:|----------:|-----------:|-----------:|-----------:|----------:|-------:|----------:|
-| DirectGetter         |  0.2243 ns | 0.0064 ns | 0.0095 ns |  0.2138 ns |  0.2538 ns |  0.2375 ns |      10 B |      - |         - |
-| PropertyGetter       | 20.6895 ns | 0.5456 ns | 0.8166 ns | 19.6389 ns | 22.6418 ns | 21.8329 ns |   3,019 B | 0.0014 |      24 B |
-| PropertyGetterCashed |  8.9811 ns | 0.2230 ns | 0.3338 ns |  8.5007 ns |  9.7118 ns |  9.3515 ns |   3,278 B | 0.0014 |      24 B |
-| AccessorGetter       | 10.6687 ns | 0.2781 ns | 0.4163 ns |  9.9247 ns | 11.7124 ns | 11.1563 ns |   3,219 B | 0.0014 |      24 B |
-| AccessorGetterCached |  2.3157 ns | 0.0976 ns | 0.1461 ns |  2.0956 ns |  2.5933 ns |  2.4920 ns |     174 B | 0.0014 |      24 B |
-| ExpressionGetter     |  1.3618 ns | 0.0267 ns | 0.0392 ns |  1.2959 ns |  1.4362 ns |  1.4167 ns |      54 B |      - |         - |
-| GeneratorGetter      |  0.2304 ns | 0.0055 ns | 0.0082 ns |  0.2172 ns |  0.2518 ns |  0.2416 ns |      76 B |      - |         - |
-| DirectSetter         |  0.2291 ns | 0.0066 ns | 0.0099 ns |  0.2145 ns |  0.2458 ns |  0.2427 ns |      28 B |      - |         - |
-| PropertySetter       | 19.3523 ns | 0.6403 ns | 0.9584 ns | 17.8336 ns | 21.3628 ns | 20.3991 ns |   8,536 B | 0.0014 |      24 B |
-| PropertySetterCashed | 11.1574 ns | 0.2706 ns | 0.4051 ns | 10.5017 ns | 11.5931 ns | 11.5931 ns |   8,736 B | 0.0014 |      24 B |
-| AccessorSetter       | 10.5961 ns | 0.2128 ns | 0.3120 ns | 10.1118 ns | 11.3181 ns | 11.0217 ns |   3,238 B | 0.0014 |      24 B |
-| AccessorSetterCached |  2.2665 ns | 0.1085 ns | 0.1623 ns |  1.9878 ns |  2.5154 ns |  2.4811 ns |     191 B | 0.0014 |      24 B |
-| ExpressionSetter     |  1.4610 ns | 0.0427 ns | 0.0599 ns |  1.3909 ns |  1.6234 ns |  1.5634 ns |      57 B |      - |         - |
-| GeneratorSetter      |  0.5057 ns | 0.0181 ns | 0.0259 ns |  0.4630 ns |  0.5806 ns |  0.5321 ns |      85 B |      - |         - |
+
+Method name suffixes identify the access technique:
+
+| Suffix | Technique |
+| --- | --- |
+| `Direct` | Hand-written property access (baseline) |
+| `Factory` | Generated typed delegate from `CreateGetter<T>` / `CreateSetter<T>` |
+| `FactoryExtension` | The same delegate invoked through the `Read` / `Write` extensions |
+| `AccessorCached` | Object-based `IAccessor.GetValue` / `SetValue` on a cached instance |
+| `Accessor` | The same, resolving the accessor on every call |
+| `Expression` | Compiled expression-tree delegate |
+| `ReflectionCached` | Cached `PropertyInfo` |
+| `Reflection` | `GetProperty` followed by `GetValue` / `SetValue` on every call |
+
+> **Note:** Means below roughly 0.5 ns sit at the measurement floor of this machine, where loop codegen differences dominate. Do not read significance into gaps at that scale, including cases where a generated accessor measures slightly faster than `Direct`.
+
+### Resolution
+
+Cost of obtaining the accessor itself, excluding member access.
+
+| Method | Mean | Error | StdDev | Ratio | Code Size | Allocated |
+|--------------------------- |-----------:|----------:|----------:|------:|----------:|----------:|
+| FactoryResolveCached | 0.3221 ns | 0.0016 ns | 0.0024 ns | 1.00 | 20 B | - |
+| FactoryResolveProvider | 0.3213 ns | 0.0012 ns | 0.0018 ns | 1.00 | 32 B | - |
+| FactoryResolveRegistry | 0.3213 ns | 0.0016 ns | 0.0023 ns | 1.00 | 945 B | - |
+| FactoryResolveRegistryType | 5.2756 ns | 0.0496 ns | 0.0712 ns | 16.38 | 1,589 B | - |
+| | | | | | | |
+| ConstructorFindCached | 0.3211 ns | 0.0012 ns | 0.0018 ns | 1.00 | 20 B | - |
+| ConstructorFindProvider | 0.3218 ns | 0.0013 ns | 0.0019 ns | 1.00 | 32 B | - |
+| ConstructorFind | 0.3273 ns | 0.0043 ns | 0.0061 ns | 1.02 | 1,006 B | - |
+
+`AccessorProvider.GetFactory<T>()`, `AccessorRegistry.FindFactory<T>()` and a cached field are indistinguishable, because the generic registry overload is served by a per-type static cache. The `Type`-based `FindFactory(Type)` is the only path that reaches the dictionary, at roughly 16x the cost.
+
+### Member Access
+
+Full results for a class with an `int` property.
+
+| Method | Mean | Error | StdDev | Ratio | Code Size | Allocated |
+|---------------------------- |-----------:|----------:|----------:|------:|----------:|----------:|
+| ClassIntGetDirect | 0.2056 ns | 0.0017 ns | 0.0026 ns | 1.00 | 21 B | - |
+| ClassIntGetFactory | 0.2082 ns | 0.0006 ns | 0.0009 ns | 1.01 | 143 B | - |
+| ClassIntGetFactoryExtension | 0.2094 ns | 0.0008 ns | 0.0012 ns | 1.02 | 143 B | - |
+| ClassIntGetExpression | 1.2028 ns | 0.0075 ns | 0.0108 ns | 5.85 | 45 B | - |
+| ClassIntGetAccessorCached | 1.5300 ns | 0.0238 ns | 0.0356 ns | 7.44 | 165 B | 24 B |
+| ClassIntGetAccessor | 1.7438 ns | 0.0379 ns | 0.0518 ns | 8.48 | 790 B | 24 B |
+| ClassIntGetReflectionCached | 6.5102 ns | 0.1701 ns | 0.2494 ns | 31.67 | 3,260 B | 24 B |
+| ClassIntGetReflection | 11.2155 ns | 0.2944 ns | 0.4407 ns | 54.57 | 7,699 B | 24 B |
+| | | | | | | |
+| ClassIntSetDirect | 0.2081 ns | 0.0016 ns | 0.0023 ns | 1.00 | 19 B | - |
+| ClassIntSetFactoryExtension | 0.2085 ns | 0.0007 ns | 0.0010 ns | 1.00 | 153 B | - |
+| ClassIntSetFactory | 0.2097 ns | 0.0013 ns | 0.0018 ns | 1.01 | 153 B | - |
+| ClassIntSetExpression | 1.2061 ns | 0.0046 ns | 0.0065 ns | 5.80 | 48 B | - |
+| ClassIntSetAccessor | 1.5408 ns | 0.0167 ns | 0.0250 ns | 7.40 | 808 B | 24 B |
+| ClassIntSetAccessorCached | 1.5952 ns | 0.0380 ns | 0.0532 ns | 7.66 | 182 B | 24 B |
+| ClassIntSetReflectionCached | 7.9565 ns | 0.0847 ns | 0.1268 ns | 38.23 | 8,557 B | 24 B |
+| ClassIntSetReflection | 13.0950 ns | 0.1302 ns | 0.1867 ns | 62.92 | 8,377 B | 24 B |
+
+The typed delegate matches hand-written access and allocates nothing. The object-based `IAccessor` allocates 24 B per call when the member is a value type, because the value is boxed into `object?`.
 
 ### Type Scenarios
 
-Cached reflection (`PropertyInfo`) compared with the generated typed accessor (`CreateGetter<T>` / `CreateSetter<T>`) across property types (`int` / `string`), a value type (`struct`), a large class, and a generic type. The generated accessor is allocation-free and stays roughly constant regardless of the member type or the declaring-type kind.
+Mean per operation across declaring-type kinds and member types. The generated typed delegate stays at the level of direct access regardless of the scenario, while reflection scales with the complexity of the type.
 
-```
-BenchmarkDotNet v0.15.8, Windows 11 (10.0.26200.8524/25H2/2025Update/HudsonValley2)
-AMD Ryzen 9 5900X 3.70GHz, 1 CPU, 24 logical and 12 physical cores
-.NET SDK 10.0.300
-  [Host]    : .NET 10.0.8 (10.0.8, 10.0.826.23019), X64 RyuJIT x86-64-v3
-  MediumRun : .NET 10.0.8 (10.0.8, 10.0.826.23019), X64 RyuJIT x86-64-v3
+| Scenario | Operation | Direct | Factory | AccessorCached | ReflectionCached | Reflection |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| class / int | Get | 0.2056 ns | 0.2082 ns | 1.5300 ns | 6.5102 ns | 11.2155 ns |
+| class / int | Set | 0.2081 ns | 0.2097 ns | 1.5952 ns | 7.9565 ns | 13.0950 ns |
+| class / string | Get | 0.2037 ns | 0.2283 ns | 0.2096 ns | 4.5291 ns | 8.4370 ns |
+| class / string | Set | 0.2066 ns | 0.3244 ns | 0.2072 ns | 10.5444 ns | 15.2878 ns |
+| struct / int | Get | 0.3231 ns | 0.2097 ns | 2.7881 ns | 6.5762 ns | 11.7201 ns |
+| struct / int | Set | 0.2102 ns | 0.2114 ns | 1.7996 ns | 8.2455 ns | 13.5084 ns |
+| generic / int | Get | 0.3214 ns | 0.3217 ns | 2.3909 ns | 9.4616 ns | 16.7859 ns |
+| generic / int | Set | 0.3190 ns | 0.3229 ns | 2.3493 ns | 12.7049 ns | 20.0338 ns |
+| large class / int | Get | 0.3212 ns | 0.3236 ns | 2.3160 ns | 9.5359 ns | 17.2085 ns |
+| large class / int | Set | 0.3219 ns | 0.3230 ns | 2.3935 ns | 13.1951 ns | 21.5638 ns |
 
-Job=MediumRun  IterationCount=15  LaunchCount=2  
-WarmupCount=10  
-```
-| Method               | Mean       | Error     | StdDev    | Min        | Max        | P90        | Gen0   | Allocated |
-|--------------------- |-----------:|----------:|----------:|-----------:|-----------:|-----------:|-------:|----------:|
-| IntGetReflection     | 11.2540 ns | 0.5883 ns | 0.8805 ns | 10.1597 ns | 13.0197 ns | 12.3929 ns | 0.0014 |      24 B |
-| IntGetGenerator      |  0.2751 ns | 0.0052 ns | 0.0074 ns |  0.2604 ns |  0.2916 ns |  0.2840 ns |      - |         - |
-| IntSetReflection     | 13.5897 ns | 0.6378 ns | 0.9147 ns | 12.6522 ns | 16.0574 ns | 15.0835 ns | 0.0014 |      24 B |
-| IntSetGenerator      |  0.2780 ns | 0.0108 ns | 0.0158 ns |  0.2614 ns |  0.3194 ns |  0.3024 ns |      - |         - |
-| StringGetReflection  |  7.5344 ns | 0.1788 ns | 0.2620 ns |  7.0083 ns |  8.1777 ns |  7.9011 ns |      - |         - |
-| StringGetGenerator   |  0.3142 ns | 0.0236 ns | 0.0354 ns |  0.2700 ns |  0.3841 ns |  0.3574 ns |      - |         - |
-| StringSetReflection  | 12.0234 ns | 0.3071 ns | 0.4597 ns | 11.3507 ns | 13.1734 ns | 12.6080 ns |      - |         - |
-| StringSetGenerator   |  0.2908 ns | 0.0139 ns | 0.0203 ns |  0.2281 ns |  0.3274 ns |  0.3096 ns |      - |         - |
-| StructGetReflection  | 10.7348 ns | 0.3399 ns | 0.4765 ns |  9.9749 ns | 11.7202 ns | 11.3857 ns | 0.0014 |      24 B |
-| StructGetGenerator   |  0.3123 ns | 0.0291 ns | 0.0435 ns |  0.2205 ns |  0.3754 ns |  0.3677 ns |      - |         - |
-| LargeGetReflection   | 10.3250 ns | 0.3926 ns | 0.5631 ns |  9.7004 ns | 11.8913 ns | 11.1991 ns | 0.0014 |      24 B |
-| LargeGetGenerator    |  0.2837 ns | 0.0225 ns | 0.0315 ns |  0.2514 ns |  0.3526 ns |  0.3394 ns |      - |         - |
-| LargeSetReflection   | 13.8748 ns | 0.8492 ns | 1.2448 ns | 12.8041 ns | 17.1278 ns | 16.1829 ns | 0.0014 |      24 B |
-| LargeSetGenerator    |  0.2960 ns | 0.0183 ns | 0.0274 ns |  0.2682 ns |  0.3671 ns |  0.3377 ns |      - |         - |
-| GenericGetReflection | 11.0396 ns | 0.6136 ns | 0.8995 ns | 10.0449 ns | 13.5371 ns | 12.5900 ns | 0.0014 |      24 B |
-| GenericGetGenerator  |  0.2951 ns | 0.0177 ns | 0.0265 ns |  0.2712 ns |  0.3638 ns |  0.3351 ns |      - |         - |
-| GenericSetReflection | 13.9884 ns | 0.4783 ns | 0.7010 ns | 12.9126 ns | 15.8474 ns | 14.8361 ns | 0.0014 |      24 B |
-| GenericSetGenerator  |  0.2836 ns | 0.0035 ns | 0.0049 ns |  0.2683 ns |  0.2925 ns |  0.2884 ns |      - |         - |
+`class / string` is the one scenario where `AccessorCached` is also at the floor: a reference-typed member needs no boxing when returned as `object?`.
+
+### Ref-Free Extensions
+
+The `Read` / `Write` extensions accept the target by value, for use where `ref` cannot be applied. The `Unsafe.AsRef` they use is fully inlined: the disassembly of each pair below is identical instruction for instruction, so the convenience is free for classes and structs alike.
+
+| Method | Mean | Error | StdDev | Code Size | Allocated |
+|----------------------------- |----------:|----------:|----------:|----------:|----------:|
+| ClassIntPropertyGetTemp | 0.2395 ns | 0.0043 ns | 0.0062 ns | 158 B | - |
+| ClassIntPropertyGetExtension | 0.2332 ns | 0.0025 ns | 0.0036 ns | 158 B | - |
+| | | | | | |
+| ClassIntGetFactory | 0.2082 ns | 0.0006 ns | 0.0009 ns | 143 B | - |
+| ClassIntGetFactoryExtension | 0.2094 ns | 0.0008 ns | 0.0012 ns | 143 B | - |
+| | | | | | |
+| StructGetFactory | 0.2097 ns | 0.0032 ns | 0.0046 ns | 137 B | - |
+| StructGetFactoryExtension | 0.2094 ns | 0.0020 ns | 0.0029 ns | 137 B | - |
+| | | | | | |
+| StructSetFactory | 0.2114 ns | 0.0020 ns | 0.0030 ns | 179 B | - |
+| StructSetFactoryExtension | 0.2119 ns | 0.0019 ns | 0.0029 ns | 179 B | - |
+
+`ClassIntPropertyGetTemp` is the workaround the extension replaces: copying a property into a temporary local so it can be passed by `ref`.
