@@ -4,27 +4,6 @@
 
 AOT-safe source-generated member accessor for .NET. A reflection-free alternative for property get/set, constructor invocation, and member enumeration.
 
-## Support Matrix
-
-| Feature | Supported | Notes |
-| --- | :---: | --- |
-| `class` | ✅ | Full support |
-| `struct` | ✅ | Boxed instance required for `IAccessor.SetValue`; typed `CreateSetter<T>` returns `null` (see Struct Support) |
-| `record` (class) | ✅ | Treated as class |
-| `record struct` | ✅ | Treated as struct |
-| Open generic (`Foo<T>`) | ✅ | On-demand closed-type instantiation |
-| Closed generic pre-registration | ✅ | `[TypedAccessor(typeof(Foo<int>))]` |
-| Inherited properties | ✅ | Flattened from base classes |
-| Public instance properties | ✅ | Read/write; `static`, non-public and indexers are ignored |
-| Read-only properties | ✅ | Setter returns `null` |
-| Constructor accessor | ✅ | Arity 0–4; AOT-safe; generic types supported |
-| Same-arity constructor overloads | ✅ | Resolved by argument type at runtime (see Constructor Accessor) |
-| `IAccessorFactory.Members` | ✅ | `IReadOnlyList<MemberDescriptor>` (public instance properties only) |
-| `static` members | ❌ | Not yet supported |
-| Non-public members | ❌ | Public only |
-| Fields | ❌ | Properties only |
-| `init`-only properties | ✅ | Readable; `init` setters are treated as read-only (`CanWrite` = `false`, typed setter returns `null`) |
-
 ## Reference
 
 Add reference to BunnyTail.MemberAccessor to csproj.
@@ -37,13 +16,13 @@ Add reference to BunnyTail.MemberAccessor to csproj.
 
 ## MemberAccessor
 
-### Source
+### Basic Usage
 
 ```csharp
 using BunnyTail.MemberAccessor;
 
 [GenerateAccessor]
-public class Data
+public partial class Data
 {
     public int Id { get; set; }
 
@@ -59,9 +38,24 @@ var getter = accessorFactory.CreateGetter<int>(nameof(Data.Id));
 var setter = accessorFactory.CreateSetter<int>(nameof(Data.Id));
 
 var data = new Data();
-setter(data, 123);
-var id = getter(data);
+setter(ref data, 123);
+var id = getter(ref data);
 ```
+
+For targets that cannot be passed by `ref` (properties, list elements, `foreach` variables),
+the `Read` / `Write` extension methods provide ref-free invocation with the same syntax for
+classes and structs:
+
+```csharp
+var list = new List<Data> { new() { Id = 1 } };
+var id = getter.Read(list[0]);
+setter.Write(list[0], 2);
+```
+
+The same syntax works for structs; the target variable is mutated in place (see Struct Support).
+
+> **Note:** For value types the target must be a variable (local, field, array element).
+> A write through a temporary copy (property or `List<T>` indexer result) is lost.
 
 ### Member Enumeration
 
@@ -105,16 +99,168 @@ If no constructor matches the supplied argument type, `NotSupportedException` is
 
 ```csharp
 [GenerateAccessor]
-public struct Point { public int X { get; set; } public int Y { get; set; } }
+public partial struct Point { public int X { get; set; } public int Y { get; set; } }
 
 var accessor = AccessorRegistry.FindAccessor<Point>();
 object boxed = new Point { X = 1, Y = 2 };
 accessor.SetValue(boxed, "X", 10); // modifies boxed instance
+
+var factory = AccessorRegistry.FindFactory<Point>();
+var setX = factory.CreateSetter<int>(nameof(Point.X));
+var point = new Point();
+setX(ref point, 10);    // mutates in place, no boxing
+setX.Write(point, 20);  // extension: same syntax as class
 ```
 
-> **Note:** For value types, the typed `IAccessorFactory<T>.CreateSetter<TProperty>` returns `null`,
-> because a `delegate void(T, TProperty)` would receive a copy of the struct and could not mutate the
-> caller's value. Use `IAccessor.SetValue` with a boxed instance to modify a struct.
+> **Note:** The object-based `IAccessor.SetValue` requires a boxed instance and modifies the
+> boxed copy. The typed delegates take the target by `ref` and mutate the caller's value in place.
+
+## Attributes
+
+| Attribute | Target | Description |
+| --- | --- | --- |
+| `[GenerateAccessor]` | class, struct | Generates the accessor, factory and constructor accessor for the annotated type |
+| `[TypedAccessor(typeof(Foo<int>))]` | assembly, class | Pre-registers a closed instantiation of an open generic type (required for Native AOT) |
+| `[AccessorMember]` | property, field | Opts a non-public member in; `Ignore = true` excludes the member instead |
+| `[GenerateAccessorFor(typeof(Target))]` | assembly, class | Generates accessors for an external type that cannot be annotated |
+
+### GenerateAccessor
+
+Generates the accessor classes for the annotated type.
+
+```csharp
+[GenerateAccessor]
+public partial class Data
+{
+    public int Id { get; set; }
+
+    public string Name { get; set; } = default!;
+}
+```
+
+When the type is declared `partial`, it also implements `IAccessorProvider<T>` (and
+`IConstructorProvider<T>` when public constructors are available), enabling registry-free
+access through static abstract members:
+
+```csharp
+var factory = AccessorProvider.GetFactory<Data>();
+```
+
+### TypedAccessor
+
+Open generic types are instantiated on demand with `MakeGenericType`, which is not AOT-safe.
+Pre-register the closed types used by the application for Native AOT:
+
+```csharp
+[GenerateAccessor]
+[TypedAccessor(typeof(GenericData<int>))]
+[TypedAccessor(typeof(GenericData<string>))]
+public partial class GenericData<T>
+{
+    public T Value { get; set; } = default!;
+}
+```
+
+Assembly-level registration is also supported:
+
+```csharp
+[assembly: TypedAccessor(typeof(GenericData<DateTime>))]
+```
+
+### AccessorMember
+
+Non-public members are excluded by default and can be opted in with `[AccessorMember]`.
+Access to opted-in members is implemented with `UnsafeAccessor`; for generic types this
+requires .NET 9 or later. `Ignore = true` excludes a member from generation:
+
+```csharp
+[GenerateAccessor]
+public partial class HiddenData
+{
+    public int Id { get; set; }
+
+    [AccessorMember]
+    private int counter;
+
+    [AccessorMember(Ignore = true)]
+    public string Secret { get; set; } = default!;
+}
+```
+
+### GenerateAccessorFor
+
+Generates accessors for types that cannot be annotated, such as BCL types or types in other
+assemblies:
+
+```csharp
+[assembly: GenerateAccessorFor(typeof(Version))]
+```
+
+```csharp
+var factory = AccessorRegistry.FindFactory<Version>()!;
+var getMajor = factory.CreateGetter<int>(nameof(Version.Major))!;
+```
+
+When the attribute is placed on a `partial` class, that class additionally implements
+`IAccessorProvider<T>` / `IConstructorProvider<T>` for each target type, so external types
+can also be used through static abstract constraints:
+
+```csharp
+[GenerateAccessorFor(typeof(PlainData))]
+[GenerateAccessorFor(typeof(PlainGenericData<int>))]
+internal sealed partial class AccessorProviders;
+
+var factory = AccessorProvider.GetFactory<PlainData, AccessorProviders>();
+```
+
+## AccessorRegistry vs AccessorProvider
+
+Accessors can be resolved in two ways:
+
+```csharp
+// Runtime lookup by type (nullable result)
+var factory1 = AccessorRegistry.FindFactory<Data>();
+var factory2 = AccessorRegistry.FindFactory(typeof(Data));
+
+// Compile-time resolution via static abstract members (always succeeds)
+var factory3 = AccessorProvider.GetFactory<Data>();
+```
+
+| | `AccessorRegistry` | `AccessorProvider` |
+| --- | --- | --- |
+| Resolution | Runtime dictionary lookup | Compile-time via static abstract members |
+| Result | Nullable (`null` when not registered) | Non-null (guaranteed by generic constraint) |
+| `System.Type`-based lookup | ✅ `FindFactory(type)` | ❌ Generic type argument only |
+| Generic types on Native AOT | Closed types must be pre-registered with `[TypedAccessor]` | Any closed instantiation works without pre-registration |
+| Requirement | Type registered via attributes | `partial` type with `[GenerateAccessor]`, or a provider class with `[GenerateAccessorFor]` |
+
+Guideline: prefer `AccessorProvider` when the target type is statically known — it avoids the
+dictionary lookup and never returns `null`. Use `AccessorRegistry` when types are handled
+dynamically (serialization, mapping frameworks, `System.Type`-driven scenarios), or when the
+target type is not `partial`.
+
+## Support Matrix
+
+| Feature | Supported | Notes |
+| --- | :---: | --- |
+| `class` | ✅ | Full support |
+| `struct` | ✅ | Boxed instance required for `IAccessor.SetValue`; typed getters/setters mutate in place via `ref` (see Struct Support) |
+| `record` (class) | ✅ | Treated as class |
+| `record struct` | ✅ | Treated as struct |
+| Open generic (`Foo<T>`) | ✅ | On-demand closed-type instantiation |
+| Closed generic pre-registration | ✅ | `[TypedAccessor(typeof(Foo<int>))]` |
+| External types | ✅ | `[GenerateAccessorFor(typeof(Target))]` for types that cannot be annotated |
+| Inherited properties | ✅ | Flattened from base classes |
+| Public instance properties | ✅ | Read/write; `static` and indexers are ignored |
+| Read-only properties | ✅ | Setter returns `null` |
+| Fields | ✅ | Public instance fields; `readonly` fields are read-only |
+| Non-public members | ✅ | Opt-in with `[AccessorMember]` (implemented with `UnsafeAccessor`) |
+| Constructor accessor | ✅ | Arity 0–16; AOT-safe; generic types supported |
+| Same-arity constructor overloads | ✅ | Resolved by argument type at runtime (see Constructor Accessor) |
+| `IAccessorFactory.Members` | ✅ | `IReadOnlyList<MemberDescriptor>` (properties and fields, including opted-in non-public members) |
+| Registry-free access | ✅ | `AccessorProvider` / `IAccessorProvider<T>` static abstract members on `partial` types |
+| `static` members | ❌ | Not yet supported |
+| `init`-only properties | ✅ | Readable; `init` setters are treated as read-only (`CanWrite` = `false`, typed setter returns `null`) |
 
 ## Benchmark
 
