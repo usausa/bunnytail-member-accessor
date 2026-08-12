@@ -4,16 +4,6 @@
 
 AOT-safe source-generated member accessor for .NET. A reflection-free alternative for property get/set, constructor invocation, and member enumeration.
 
-## Reference
-
-Add reference to BunnyTail.MemberAccessor to csproj.
-
-```xml
-  <ItemGroup>
-    <PackageReference Include="BunnyTail.MemberAccessor" Version="1.2.0" />
-  </ItemGroup>
-```
-
 ## MemberAccessor
 
 ### Basic Usage

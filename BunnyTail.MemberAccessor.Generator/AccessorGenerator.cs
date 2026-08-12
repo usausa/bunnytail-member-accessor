@@ -10,7 +10,6 @@ using BunnyTail.MemberAccessor.Generator.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 
 using SourceGenerateHelper;
 
@@ -580,8 +579,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var builder = new SourceBuilder();
         BuildClassSource(builder, type);
 
-        var filename = MakeFilename(type.Namespace, type.ClassName);
-        context.AddSource(filename, SourceText.From(builder.ToString(), Encoding.UTF8));
+        context.AddSource(HintNameBuilder.Build(type.Namespace, type.ClassName, "Accessor"), builder);
     }
 
     private static void ExecuteExternal(
@@ -600,8 +598,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 var builder = new SourceBuilder();
                 BuildClassSource(builder, external.Type);
 
-                var filename = MakeFilename(external.Type.Namespace, external.Type.ClassName);
-                context.AddSource(filename, SourceText.From(builder.ToString(), Encoding.UTF8));
+                context.AddSource(HintNameBuilder.Build(external.Type.Namespace, external.Type.ClassName, "Accessor"), builder);
             }
 
             if (external.Provider is { } provider)
@@ -612,8 +609,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                     var builder = new SourceBuilder();
                     BuildProviderSource(builder, provider);
 
-                    var filename = MakeProviderFilename(provider);
-                    context.AddSource(filename, SourceText.From(builder.ToString(), Encoding.UTF8));
+                    context.AddSource(MakeProviderFilename(provider), builder);
                 }
             }
         }
@@ -625,7 +621,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         var builder = new SourceBuilder();
         BuildRegistrySource(builder, model.Types, model.ClosedTypes);
-        context.AddSource("AccessorInitializer.g.cs", SourceText.From(builder.ToString(), Encoding.UTF8));
+        context.AddSource("AccessorInitializer.g.cs", builder);
     }
 
     // ------------------------------------------------------------
@@ -1564,40 +1560,16 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     // Helper
     // ------------------------------------------------------------
 
-    private static string MakeFilename(string ns, string className)
-    {
-        var buffer = new StringBuilder();
-
-        if (!String.IsNullOrEmpty(ns))
-        {
-            buffer.Append(ns.Replace('.', '_'));
-            buffer.Append('_');
-        }
-
-        buffer.Append(className.Replace('<', '[').Replace('>', ']'));
-        buffer.Append("_Accessor.g.cs");
-
-        return buffer.ToString();
-    }
-
+    // The target type name comes from a typeof() argument, so it can carry characters that are
+    // illegal in a file name beyond the ones HintNameBuilder handles. Fold them first.
     private static string MakeProviderFilename(ProviderModel provider)
     {
-        var buffer = new StringBuilder();
-
-        if (!String.IsNullOrEmpty(provider.Namespace))
-        {
-            buffer.Append(provider.Namespace.Replace('.', '_'));
-            buffer.Append('_');
-        }
-
-        buffer.Append(OpenNamePart(provider.ClassName));
-        buffer.Append("_Provider_");
+        var target = new StringBuilder(provider.TargetTypeName.Length);
         foreach (var c in provider.TargetTypeName)
         {
-            buffer.Append(Char.IsLetterOrDigit(c) ? c : '_');
+            target.Append(Char.IsLetterOrDigit(c) ? c : '_');
         }
-        buffer.Append(".g.cs");
 
-        return buffer.ToString();
+        return HintNameBuilder.Build(provider.Namespace, OpenNamePart(provider.ClassName), "Provider", target.ToString());
     }
 }

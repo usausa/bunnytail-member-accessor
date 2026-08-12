@@ -32,7 +32,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Update="Microsoft.SourceLink.GitHub" Version="10.0.301" />
+    <ProjectReference Include="..\BunnyTail.MemberAccessor.Generator\BunnyTail.MemberAccessor.Generator.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>
