@@ -213,9 +213,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var constructors = publicConstructors
             .OrderBy(static x => x.Parameters.Length)
             .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(
-                x.Parameters.Select(static p => new ConstructorParameterModel(
-                    p.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                    p.Name)).ToArray())))
+                x.Parameters.Select(CreateParameterModel).ToArray())))
             .ToArray();
 
         var typeKeyword = symbol.IsRecord
@@ -232,6 +230,20 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             supportsGenericUnsafe,
             new EquatableArray<ConstructorModel>(constructors),
             new EquatableArray<MemberModel>(members.ToArray())));
+    }
+
+    private static ConstructorParameterModel CreateParameterModel(IParameterSymbol parameter)
+    {
+        var type = parameter.Type;
+        var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        // Nullable<T> is matched by its underlying type at runtime
+        if ((type is INamedTypeSymbol named) && (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T))
+        {
+            return new ConstructorParameterModel(typeName, parameter.Name, named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), true);
+        }
+
+        return new ConstructorParameterModel(typeName, parameter.Name, typeName, !type.IsValueType);
     }
 
     private static (bool Ignore, bool OptIn) GetMemberAttributeInfo(ISymbol member)
@@ -1015,13 +1027,82 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             builder.BeginScope();
             BuildCreateBody(builder, className, byArity, arity);
             builder.EndScope();
-            if (arity < MaxConstructorArity)
-            {
-                builder.NewLine();
-            }
+            builder.NewLine();
         }
 
+        // CreateInstance(params object?[]) - reflection-style creation
+        BuildCreateInstanceSource(builder, className, byArity);
+
         builder.EndScope();
+    }
+
+    private static void BuildCreateInstanceSource(SourceBuilder builder, string className, Dictionary<int, ConstructorModel[]> byArity)
+    {
+        builder.Indent().Append("public object CreateInstance(params object?[] args)").NewLine();
+        builder.BeginScope();
+        builder.Indent().Append("switch (args?.Length ?? 0)").NewLine();
+        builder.BeginScope();
+        foreach (var pair in byArity.OrderBy(static x => x.Key))
+        {
+            var arity = pair.Key;
+            var constructors = pair.Value;
+            builder.Indent().Append("case ").Append(arity.ToString(CultureInfo.InvariantCulture)).Append(':').NewLine();
+            builder.IndentLevel++;
+
+            // Single constructor bind directly
+            if (constructors.Length == 1)
+            {
+                BuildNewInstanceExpression(builder, className, constructors[0]);
+            }
+            else
+            {
+                // Multiple constructors matched by runtime argument type
+                foreach (var ctor in constructors)
+                {
+                    builder.Indent().Append("if (");
+                    for (var i = 0; i < arity; i++)
+                    {
+                        if (i > 0)
+                        {
+                            builder.Append(" && ");
+                        }
+                        var parameter = ctor.Parameters[i];
+                        if (parameter.AllowsNull)
+                        {
+                            builder.Append("((args![").Append(i.ToString(CultureInfo.InvariantCulture)).Append("] is null) || (args[")
+                                .Append(i.ToString(CultureInfo.InvariantCulture)).Append("] is ").Append(parameter.CheckType).Append("))");
+                        }
+                        else
+                        {
+                            builder.Append("args![").Append(i.ToString(CultureInfo.InvariantCulture)).Append("] is ").Append(parameter.CheckType);
+                        }
+                    }
+                    builder.Append(')').NewLine();
+                    builder.BeginScope();
+                    BuildNewInstanceExpression(builder, className, ctor);
+                    builder.EndScope();
+                }
+                builder.Indent().Append("break;").NewLine();
+            }
+            builder.IndentLevel--;
+        }
+        builder.EndScope();
+        builder.Indent().Append("throw new global::System.NotSupportedException(\"No matching constructor.\");").NewLine();
+        builder.EndScope();
+    }
+
+    private static void BuildNewInstanceExpression(SourceBuilder builder, string className, ConstructorModel ctor)
+    {
+        builder.Indent().Append("return new ").Append(className).Append('(');
+        for (var i = 0; i < ctor.Parameters.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(", ");
+            }
+            builder.Append('(').Append(ctor.Parameters[i].Type).Append(")args![").Append(i.ToString(CultureInfo.InvariantCulture)).Append("]!");
+        }
+        builder.Append(");").NewLine();
     }
 
     private static void BuildCreateBody(SourceBuilder builder, string className, Dictionary<int, ConstructorModel[]> byArity, int arity)
