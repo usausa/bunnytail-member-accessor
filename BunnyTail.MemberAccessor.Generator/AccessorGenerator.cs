@@ -70,7 +70,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             static (context, type) => ExecuteClass(context, type));
 
         var typeKeyProvider = typeProvider
-            .Select(static (types, _) => new EquatableArray<string>(types.SelectValue().Select(MakeTypeKey).ToArray()))
+            .Select(static (types, _) => new EquatableArray<string>([.. types.SelectValue().Select(MakeTypeKey)]))
             .WithTrackingName("TypeKeys");
         context.RegisterImplementationSourceOutput(
             externalProvider.Combine(typeKeyProvider),
@@ -211,8 +211,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         var constructors = publicConstructors
             .OrderBy(static x => x.Parameters.Length)
-            .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(
-                x.Parameters.Select(CreateParameterModel).ToArray())))
+            .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>([.. x.Parameters.Select(CreateParameterModel)])))
             .ToArray();
 
         var typeKeyword = symbol.IsRecord
@@ -228,7 +227,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             isPartial,
             supportsGenericUnsafe,
             new EquatableArray<ConstructorModel>(constructors),
-            new EquatableArray<MemberModel>(members.ToArray())));
+            new EquatableArray<MemberModel>([.. members])));
     }
 
     private static ConstructorParameterModel CreateParameterModel(IParameterSymbol parameter)
@@ -303,7 +302,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             }
         }
 
-        return new EquatableArray<Result<ClosedGenericModel>>(list.ToArray());
+        return [with([.. list])];
 
         static bool Predicate(AttributeData data) => data.AttributeClass?.ToDisplayString() == TypedAccessorAttributeName;
     }
@@ -425,7 +424,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             list.Add(Results.Success(new ExternalModel(typeModel, closedGeneric, provider, hasGenerateAccessor)));
         }
 
-        return new EquatableArray<Result<ExternalModel>>(list.ToArray());
+        return [with([.. list])];
     }
 
     private static ProviderModel CreateProviderModel(INamedTypeSymbol providerSymbol, TypeModel typeModel, ClosedGenericModel? closedGeneric)
@@ -500,8 +499,8 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var closedKeys = new HashSet<string>(StringComparer.Ordinal);
 
         return new RegistryModel(
-            new EquatableArray<RegistryTypeModel>(targetTypes.ToArray()),
-            new EquatableArray<ClosedGenericModel>(closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x))).ToArray()));
+            new EquatableArray<RegistryTypeModel>([.. targetTypes]),
+            new EquatableArray<ClosedGenericModel>([.. closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x)))]));
 
         static RegistryTypeModel MakeRegistryType(TypeModel type) =>
             new(type.Namespace, type.ClassName, type.TypeArgumentCount, type.Constructors.Count > 0);
