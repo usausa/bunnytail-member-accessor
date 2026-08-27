@@ -70,7 +70,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             static (context, type) => ExecuteClass(context, type));
 
         var typeKeyProvider = typeProvider
-            .Select(static (types, _) => new EquatableArray<string>([.. types.SelectValue().Select(MakeTypeKey)]))
+            .Select(static (types, _) => new EquatableArray<string>(types.SelectValue().Select(MakeTypeKey)))
             .WithTrackingName("TypeKeys");
         context.RegisterImplementationSourceOutput(
             externalProvider.Combine(typeKeyProvider),
@@ -211,7 +211,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         var constructors = publicConstructors
             .OrderBy(static x => x.Parameters.Length)
-            .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>([.. x.Parameters.Select(CreateParameterModel)])))
+            .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(x.Parameters.Select(CreateParameterModel))))
             .ToArray();
 
         var typeKeyword = symbol.IsRecord
@@ -227,7 +227,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             isPartial,
             supportsGenericUnsafe,
             new EquatableArray<ConstructorModel>(constructors),
-            new EquatableArray<MemberModel>([.. members])));
+            new EquatableArray<MemberModel>(members)));
     }
 
     private static ConstructorParameterModel CreateParameterModel(IParameterSymbol parameter)
@@ -499,8 +499,8 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var closedKeys = new HashSet<string>(StringComparer.Ordinal);
 
         return new RegistryModel(
-            new EquatableArray<RegistryTypeModel>([.. targetTypes]),
-            new EquatableArray<ClosedGenericModel>([.. closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x)))]));
+            new EquatableArray<RegistryTypeModel>(targetTypes),
+            new EquatableArray<ClosedGenericModel>(closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x)))));
 
         static RegistryTypeModel MakeRegistryType(TypeModel type) =>
             new(type.Namespace, type.ClassName, type.TypeArgumentCount, type.Constructors.Count > 0);
