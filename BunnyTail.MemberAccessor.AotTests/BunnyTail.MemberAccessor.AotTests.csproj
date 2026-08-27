@@ -17,7 +17,7 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
-  <Import Project="..\BunnyTail.MemberAccessor.props" />
+  <Import Project="..\BunnyTail.MemberAccessor.targets" />
 
   <ItemGroup>
     <ProjectReference Include="..\BunnyTail.MemberAccessor.Generator\BunnyTail.MemberAccessor.Generator.csproj" OutputItemType="analyzer" ReferenceOutputAssembly="false" />

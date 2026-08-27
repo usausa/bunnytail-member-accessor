@@ -10,12 +10,12 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
-  <Import Project="..\BunnyTail.MemberAccessor.props" />
-
   <ItemGroup>
     <ProjectReference Include="..\BunnyTail.MemberAccessor.Generator\BunnyTail.MemberAccessor.Generator.csproj" OutputItemType="analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\BunnyTail.MemberAccessor\BunnyTail.MemberAccessor.csproj" />
   </ItemGroup>
+
+  <Import Project="..\BunnyTail.MemberAccessor.targets" />
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />

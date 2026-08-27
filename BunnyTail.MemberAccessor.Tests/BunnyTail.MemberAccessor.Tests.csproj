@@ -17,7 +17,7 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
   </PropertyGroup>
 
-  <Import Project="..\BunnyTail.MemberAccessor.props" />
+  <Import Project="..\BunnyTail.MemberAccessor.targets" />
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
