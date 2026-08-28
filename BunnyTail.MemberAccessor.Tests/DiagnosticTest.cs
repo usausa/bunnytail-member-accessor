@@ -4,9 +4,133 @@ using Microsoft.CodeAnalysis;
 
 public class DiagnosticTest
 {
-    //-----------------------------------------------------------------------
+    // ------------------------------------------------------------
+    // External target
+    // ------------------------------------------------------------
+
+    [Fact]
+    public void Btma0002InvalidAttributeLocationEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            [GenerateAccessor]
+            public partial class Foo<T>
+            {
+                public T Value { get; set; } = default!;
+            }
+
+            [TypedAccessor(typeof(Foo<int>))]
+            public partial class Bar<T>
+            {
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0002");
+    }
+
+    [Fact]
+    public void Btma0006TypeNotPartialEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            public sealed class Target
+            {
+                public int Id { get; set; }
+            }
+
+            [GenerateAccessorFor(typeof(Target))]
+            public sealed class Provider
+            {
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0006");
+    }
+
+    // ------------------------------------------------------------
+    // Generic unsafe accessor
+    // ------------------------------------------------------------
+
+    [Fact]
+    public void Btma0009GenericUnsafeAccessorNotSupportedEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            [GenerateAccessor]
+            public partial class Foo<T>
+            {
+                public int Id { get; set; }
+
+                [AccessorMember]
+                private T Value { get; set; } = default!;
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0009");
+    }
+
+    // ------------------------------------------------------------
     // BTMA
-    //-----------------------------------------------------------------------
+    // ------------------------------------------------------------
+    [Fact]
+    public void Btma0005UnsupportedConstructorArityEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            [GenerateAccessor]
+            public partial class Data
+            {
+                public Data()
+                {
+                }
+
+                public Data(int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8, int p9, int p10, int p11, int p12, int p13, int p14, int p15, int p16, int p17)
+                {
+                    Id = p1;
+                }
+
+                public int Id { get; set; }
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0005");
+    }
 
     [Fact]
     public void Btma0001NonGenericTypedAccessorEmitsDiagnostic()
@@ -116,9 +240,9 @@ public class DiagnosticTest
         Assert.Contains(diagnostics, static x => x.Id == "BTMA0008");
     }
 
-    //-----------------------------------------------------------------------
+    // ------------------------------------------------------------
     // Valid
-    //-----------------------------------------------------------------------
+    // ------------------------------------------------------------
 
     [Fact]
     public void ValidAccessorEmitsNoDiagnostic()
