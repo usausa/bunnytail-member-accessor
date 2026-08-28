@@ -16,6 +16,7 @@
     <ItemGroup>
       <TfmSpecificPackageFile Include="..\BunnyTail.MemberAccessor.Generator\bin\$(Configuration)\netstandard2.0\BunnyTail.MemberAccessor.Generator.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
       <TfmSpecificPackageFile Include="$(PKGSourceGenerateHelper)\lib\netstandard2.0\SourceGenerateHelper.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+      <TfmSpecificPackageFile Include="..\BunnyTail.MemberAccessor.props" Pack="true" PackagePath="buildTransitive\BunnyTail.MemberAccessor.props" Visible="false" />
       <TfmSpecificPackageFile Include="..\BunnyTail.MemberAccessor.targets" Pack="true" PackagePath="buildTransitive\BunnyTail.MemberAccessor.targets" Visible="false" />
     </ItemGroup>
   </Target>
