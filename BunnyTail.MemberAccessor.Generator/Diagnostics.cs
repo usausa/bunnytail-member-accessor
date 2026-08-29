@@ -55,7 +55,7 @@ internal static class Diagnostics
     public static DiagnosticDescriptor InvalidExternalTarget { get; } = new(
         id: "BTMA0007",
         title: "Invalid target type",
-        messageFormat: "Target type is not supported. type=[{0}]",
+        messageFormat: "[GenerateAccessorFor] target type is not supported. type=[{0}]",
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
