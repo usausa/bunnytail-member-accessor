@@ -5,6 +5,7 @@ namespace BunnyTail.MemberAccessor.AotTests;
 // Reference type
 //--------------------------------------------------------------------------------
 
+#pragma warning disable CA1724
 [GenerateAccessor]
 public sealed partial class Data
 {
@@ -12,6 +13,7 @@ public sealed partial class Data
 
     public string Name { get; set; } = default!;
 }
+#pragma warning restore CA1724
 
 //--------------------------------------------------------------------------------
 // Value type
@@ -88,9 +90,15 @@ public sealed partial class OverloadCtorData
 
     public string? StringValue { get; }
 
-    public OverloadCtorData(int intValue) => IntValue = intValue;
+    public OverloadCtorData(int intValue)
+    {
+        IntValue = intValue;
+    }
 
-    public OverloadCtorData(string stringValue) => StringValue = stringValue;
+    public OverloadCtorData(string stringValue)
+    {
+        StringValue = stringValue;
+    }
 }
 
 //--------------------------------------------------------------------------------
@@ -108,7 +116,13 @@ public sealed partial class GenericHolder<T>
 {
     public T Value { get; }
 
-    public GenericHolder() => Value = default!;
+    public GenericHolder()
+    {
+        Value = default!;
+    }
 
-    public GenericHolder(T value) => Value = value;
+    public GenericHolder(T value)
+    {
+        Value = value;
+    }
 }

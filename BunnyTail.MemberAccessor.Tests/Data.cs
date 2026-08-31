@@ -4,6 +4,7 @@
 #pragma warning disable CA1812
 namespace BunnyTail.MemberAccessor;
 
+#pragma warning disable CA1724
 [GenerateAccessor]
 public partial class Data
 {
@@ -11,6 +12,7 @@ public partial class Data
 
     public string Name { get; set; } = default!;
 }
+#pragma warning restore CA1724
 
 [GenerateAccessor]
 public partial class NullableData
@@ -80,7 +82,10 @@ public partial class CtorData1
 {
     public int Id { get; }
 
-    public CtorData1(int id) => Id = id;
+    public CtorData1(int id)
+    {
+        Id = id;
+    }
 }
 
 [GenerateAccessor]
@@ -238,9 +243,15 @@ public partial class OverloadCtorData
 
     public string? StringValue { get; }
 
-    public OverloadCtorData(int intValue) => IntValue = intValue;
+    public OverloadCtorData(int intValue)
+    {
+        IntValue = intValue;
+    }
 
-    public OverloadCtorData(string stringValue) => StringValue = stringValue;
+    public OverloadCtorData(string stringValue)
+    {
+        StringValue = stringValue;
+    }
 }
 
 // Same-arity constructor overload with nullable value type parameter
@@ -251,9 +262,15 @@ public partial class NullableCtorData
 
     public string? Text { get; }
 
-    public NullableCtorData(int? value) => Value = value;
+    public NullableCtorData(int? value)
+    {
+        Value = value;
+    }
 
-    public NullableCtorData(string text) => Text = text;
+    public NullableCtorData(string text)
+    {
+        Text = text;
+    }
 }
 
 // Generic constructor accessor test data
@@ -263,9 +280,15 @@ public partial class GenericHolder<T>
 {
     public T Value { get; }
 
-    public GenericHolder() => Value = default!;
+    public GenericHolder()
+    {
+        Value = default!;
+    }
 
-    public GenericHolder(T value) => Value = value;
+    public GenericHolder(T value)
+    {
+        Value = value;
+    }
 }
 
 // Inherited properties test data
@@ -305,11 +328,13 @@ public class FilterData
 [GenerateAccessor]
 public partial class FieldData
 {
+#pragma warning disable SA1214
     public int Count;
 
     public string Tag = string.Empty;
 
     public readonly int Fixed;
+#pragma warning restore SA1214
 
     public int Value { get; set; }
 
@@ -317,7 +342,10 @@ public partial class FieldData
     {
     }
 
-    public FieldData(int fixedValue) => Fixed = fixedValue;
+    public FieldData(int fixedValue)
+    {
+        Fixed = fixedValue;
+    }
 }
 
 [GenerateAccessor]
@@ -419,7 +447,10 @@ public class PlainGenericData<T>
     {
     }
 
-    public PlainGenericData(T value) => Value = value;
+    public PlainGenericData(T value)
+    {
+        Value = value;
+    }
 }
 
 // Provider type: accessor generation for types it does not own + IAccessorProvider implementations

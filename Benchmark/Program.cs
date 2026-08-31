@@ -1276,6 +1276,7 @@ public static class ExpressionHelper
     }
 }
 
+#pragma warning disable CA1724
 [GenerateAccessor]
 public partial class Data
 {
@@ -1283,6 +1284,7 @@ public partial class Data
 
     public string Name { get; set; } = default!;
 }
+#pragma warning restore CA1724
 
 public sealed class DataHolder
 {

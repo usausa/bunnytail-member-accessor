@@ -111,7 +111,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var members = new List<MemberModel>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var current = symbol;
-        while (current is not null && current.SpecialType != SpecialType.System_Object)
+        while ((current is not null) && (current.SpecialType != SpecialType.System_Object))
         {
             foreach (var member in current.GetMembers())
             {

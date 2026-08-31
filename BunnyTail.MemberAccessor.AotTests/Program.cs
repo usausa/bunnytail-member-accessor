@@ -131,16 +131,16 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(ctor is not null, "FindConstructor<CtorData> returned null");
 
     var d0 = ctor!.Create();
-    Assert(d0.Id == 0 && d0.Name == "default", "Ctor Create()");
+    Assert((d0.Id == 0) && (d0.Name == "default"), "Ctor Create()");
 
     var d2 = ctor.Create(99, "hello");
-    Assert(d2.Id == 99 && d2.Name == "hello", "Ctor Create(int, string)");
+    Assert((d2.Id == 99) && (d2.Name == "hello"), "Ctor Create(int, string)");
 
     static Type GetRuntimeType<T>() => typeof(T);
     var objCtor = AccessorProvider.FindConstructor(GetRuntimeType<CtorData>());
     Assert(objCtor is not null, "FindConstructor(Type) returned null");
     var d3 = (CtorData)objCtor!.CreateInstance(7, "obj");
-    Assert(d3.Id == 7 && d3.Name == "obj", "CreateInstance(object[])");
+    Assert((d3.Id == 7) && (d3.Name == "obj"), "CreateInstance(object[])");
     Console.WriteLine("  [OK] Constructor accessor");
 }
 
@@ -152,10 +152,10 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
     Assert(ctor is not null, "FindConstructor<OverloadCtorData> returned null");
 
     var fromInt = ctor!.Create(123);
-    Assert(fromInt.IntValue == 123 && fromInt.StringValue is null, "Overload ctor int");
+    Assert((fromInt.IntValue == 123) && (fromInt.StringValue is null), "Overload ctor int");
 
     var fromString = ctor.Create("abc");
-    Assert(fromString.StringValue == "abc" && fromString.IntValue == 0, "Overload ctor string");
+    Assert((fromString.StringValue == "abc") && (fromString.IntValue == 0), "Overload ctor string");
     Console.WriteLine("  [OK] Same-arity overloaded constructor");
 }
 
@@ -201,7 +201,7 @@ Console.WriteLine("BunnyTail.MemberAccessor AOT smoke tests starting...");
 
     var ctor = AccessorProvider.GetConstructor<CtorData>();
     var created = ctor.Create(5, "c");
-    Assert(created.Id == 5 && created.Name == "c", "IConstructorProvider Create");
+    Assert((created.Id == 5) && (created.Name == "c"), "IConstructorProvider Create");
 
     // Closed generics flow through the type system without pre-registration
     var genericFactory = AccessorProvider.GetFactory<GenericData<long>>();
