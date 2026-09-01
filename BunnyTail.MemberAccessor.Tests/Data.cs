@@ -4,7 +4,6 @@
 #pragma warning disable CA1812
 namespace BunnyTail.MemberAccessor;
 
-#pragma warning disable CA1724
 [GenerateAccessor]
 public partial class Data
 {
@@ -12,7 +11,6 @@ public partial class Data
 
     public string Name { get; set; } = default!;
 }
-#pragma warning restore CA1724
 
 [GenerateAccessor]
 public partial class NullableData
@@ -328,13 +326,11 @@ public class FilterData
 [GenerateAccessor]
 public partial class FieldData
 {
-#pragma warning disable SA1214
     public int Count;
 
     public string Tag = string.Empty;
 
     public readonly int Fixed;
-#pragma warning restore SA1214
 
     public int Value { get; set; }
 

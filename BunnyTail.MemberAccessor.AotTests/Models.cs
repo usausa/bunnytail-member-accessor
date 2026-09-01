@@ -5,7 +5,6 @@ namespace BunnyTail.MemberAccessor.AotTests;
 // Reference type
 //--------------------------------------------------------------------------------
 
-#pragma warning disable CA1724
 [GenerateAccessor]
 public sealed partial class Data
 {
@@ -13,7 +12,6 @@ public sealed partial class Data
 
     public string Name { get; set; } = default!;
 }
-#pragma warning restore CA1724
 
 //--------------------------------------------------------------------------------
 // Value type
