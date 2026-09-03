@@ -302,7 +302,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             }
         }
 
-        return [with(list.ToArray())];
+        return new(list);
 
         static bool Predicate(AttributeData data) => data.AttributeClass?.ToDisplayString() == TypedAccessorAttributeName;
     }
@@ -424,7 +424,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             list.Add(Results.Success(new ExternalModel(typeModel, closedGeneric, provider, hasGenerateAccessor)));
         }
 
-        return [with(list.ToArray())];
+        return new(list);
     }
 
     private static ProviderModel CreateProviderModel(INamedTypeSymbol providerSymbol, TypeModel typeModel, ClosedGenericModel? closedGeneric)
