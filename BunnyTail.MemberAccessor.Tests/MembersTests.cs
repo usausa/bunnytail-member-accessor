@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class MembersTest
+public class MembersTests
 {
     [Fact]
     public void TestMembersDescriptors()

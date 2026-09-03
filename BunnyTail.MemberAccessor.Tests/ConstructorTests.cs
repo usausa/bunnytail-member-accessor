@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class ConstructorTest
+public class ConstructorTests
 {
     private static Type GetRuntimeType<T>() => typeof(T);
 

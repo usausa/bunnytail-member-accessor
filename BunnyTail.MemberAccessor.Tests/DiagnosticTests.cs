@@ -2,7 +2,7 @@ namespace BunnyTail.MemberAccessor;
 
 using Microsoft.CodeAnalysis;
 
-public class DiagnosticTest
+public class DiagnosticTests
 {
     // ------------------------------------------------------------
     // External target

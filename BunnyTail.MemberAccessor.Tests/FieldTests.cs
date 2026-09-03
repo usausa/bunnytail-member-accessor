@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class FieldTest
+public class FieldTests
 {
     [Fact]
     public void TestFieldAccessor()

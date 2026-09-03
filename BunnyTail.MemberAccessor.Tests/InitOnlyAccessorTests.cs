@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class InitOnlyAccessorTest
+public class InitOnlyAccessorTests
 {
     [Fact]
     public void TestInitOnlyPropertyIsReadable()

@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class StructAccessorTest
+public class StructAccessorTests
 {
     [Fact]
     public void TestStructAccessorGetValue()

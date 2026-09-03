@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class RegistryTest
+public class RegistryTests
 {
     private static Type GetRuntimeType<T>() => typeof(T);
 

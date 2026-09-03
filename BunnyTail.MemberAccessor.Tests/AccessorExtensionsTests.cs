@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class AccessorExtensionsTest
+public class AccessorExtensionsTests
 {
     private sealed class Holder
     {

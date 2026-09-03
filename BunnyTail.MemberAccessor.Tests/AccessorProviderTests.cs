@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class AccessorProviderTest
+public class AccessorProviderTests
 {
     [Fact]
     public void TestProviderClass()

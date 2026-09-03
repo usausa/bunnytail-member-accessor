@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class AccessorMemberTest
+public class AccessorMemberTests
 {
     [Fact]
     public void TestIgnoredMembersExcluded()

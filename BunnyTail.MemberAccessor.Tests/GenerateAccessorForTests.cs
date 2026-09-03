@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class GenerateAccessorForTest
+public class GenerateAccessorForTests
 {
     [Fact]
     public void TestExternalPlainType()

@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class NameMismatchTest
+public class NameMismatchTests
 {
     private const string UnknownName = "NoSuchProperty";
 

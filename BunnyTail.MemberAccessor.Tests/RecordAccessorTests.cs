@@ -1,6 +1,6 @@
 namespace BunnyTail.MemberAccessor;
 
-public class RecordAccessorTest
+public class RecordAccessorTests
 {
     [Fact]
     public void TestRecordClassFactoryGetSet()
