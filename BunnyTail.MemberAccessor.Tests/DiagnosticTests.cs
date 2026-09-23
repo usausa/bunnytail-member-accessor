@@ -241,6 +241,91 @@ public class DiagnosticTests
     }
 
     // ------------------------------------------------------------
+    // Nested type
+    // ------------------------------------------------------------
+
+    [Fact]
+    public void Btma0010GenericContainingTypeEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            public partial class Outer<T>
+            {
+                [GenerateAccessor]
+                public partial class Inner
+                {
+                    public int Id { get; set; }
+                }
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0010");
+    }
+
+    [Fact]
+    public void Btma0010GenericNestedTypeEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            public partial class Outer
+            {
+                [GenerateAccessor]
+                public partial class Inner<T>
+                {
+                    public T Value { get; set; } = default!;
+                }
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0010");
+    }
+
+    [Fact]
+    public void Btma0011PrivateNestedTypeEmitsDiagnostic()
+    {
+        // Arrange
+        const string source =
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            public partial class Outer
+            {
+                [GenerateAccessor]
+                private partial class Inner
+                {
+                    public int Id { get; set; }
+                }
+            }
+            """;
+
+        // Act
+        var diagnostics = GeneratorTestHelper.GetDiagnostics(source);
+
+        // Assert
+        Assert.Contains(diagnostics, static x => x.Id == "BTMA0011");
+    }
+
+    // ------------------------------------------------------------
     // Valid
     // ------------------------------------------------------------
 
@@ -301,5 +386,43 @@ public class DiagnosticTests
             """);
 
         Assert.DoesNotContain(diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
+    public void ValidNestedAccessorProducesNoCompilationError()
+    {
+        var diagnostics = GeneratorTestHelper.GetDiagnosticsAll(
+            """
+            using BunnyTail.MemberAccessor;
+
+            namespace Test;
+
+            public partial class Outer
+            {
+                [GenerateAccessor]
+                public partial class Inner
+                {
+                    public int Id { get; set; }
+                }
+            }
+
+            [GenerateAccessor]
+            public partial class Outer_Inner
+            {
+                public int Id { get; set; }
+            }
+
+            public static class Usage
+            {
+                public static object Get(Outer.Inner inner) =>
+                    global::BunnyTail.MemberAccessor.AccessorProvider.GetAccessor<Outer.Inner>().GetValue(inner, "Id")!;
+
+                public static object Get(Outer_Inner inner) =>
+                    global::BunnyTail.MemberAccessor.AccessorProvider.GetAccessor<Outer_Inner>().GetValue(inner, "Id")!;
+            }
+            """);
+
+        Assert.DoesNotContain(diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.DoesNotContain(diagnostics, static x => x.Id == "CS8785");
     }
 }

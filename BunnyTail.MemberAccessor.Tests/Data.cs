@@ -456,3 +456,23 @@ public class PlainGenericData<T>
 [GenerateAccessorFor(typeof(PlainGenericData<int>))]
 [GenerateAccessorFor(typeof(Data))]
 internal sealed partial class AccessorProviders;
+
+public static partial class NestedOuter
+{
+    [GenerateAccessor]
+    public partial class NestedData
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = default!;
+    }
+}
+
+public static class NestedPlainOuter
+{
+    [GenerateAccessor]
+    public class NestedData
+    {
+        public int Id { get; set; }
+    }
+}

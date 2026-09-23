@@ -4,7 +4,8 @@ using SourceGenerateHelper;
 
 internal sealed record RegistryTypeModel(
     string Namespace,
-    string ClassName,
+    string TypePath,
+    string FlatName,
     int TypeArgumentCount,
     bool HasConstructors);
 

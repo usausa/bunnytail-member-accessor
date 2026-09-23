@@ -75,4 +75,20 @@ internal static class Diagnostics
         category: "Usage",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor NestedGenericTypeNotSupported { get; } = new(
+        id: "BTMA0010",
+        title: "Nested generic type not supported",
+        messageFormat: "Nested type or its containing type is generic. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor NestedTypeNotAccessible { get; } = new(
+        id: "BTMA0011",
+        title: "Nested type not accessible",
+        messageFormat: "Nested type is not accessible from its namespace. type=[{0}]",
+        category: "Usage",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

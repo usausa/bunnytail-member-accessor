@@ -107,6 +107,25 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name) ? string.Empty : symbol.ContainingNamespace.ToDisplayString();
 
+        // Collect containing types
+        var containingSymbols = symbol.GetContainingTypes();
+        if (containingSymbols.Count > 0)
+        {
+            if ((symbol.Arity > 0) || containingSymbols.Any(static x => x.Arity > 0))
+            {
+                return Results.Error<TypeModel>(new DiagnosticInfo(Diagnostics.NestedGenericTypeNotSupported, location, symbol.Name));
+            }
+
+            if (!IsAccessibleFromNamespace(symbol) || containingSymbols.Any(static x => !IsAccessibleFromNamespace(x)))
+            {
+                return Results.Error<TypeModel>(new DiagnosticInfo(Diagnostics.NestedTypeNotAccessible, location, symbol.Name));
+            }
+        }
+
+        var containingTypes = containingSymbols
+            .Select(static x => new ContainingTypeModel(x.GetClassName(), x.GetDeclarationKeyword(), IsPartialType(x)))
+            .ToArray();
+
         // Collect instance members
         var members = new List<MemberModel>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -214,15 +233,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(x.Parameters.Select(CreateParameterModel))))
             .ToArray();
 
-        var typeKeyword = symbol.IsRecord
-            ? (symbol.IsValueType ? "record struct" : "record")
-            : (symbol.IsValueType ? "struct" : "class");
-
         return Results.Success(new TypeModel(
             ns,
             symbol.GetClassName(),
+            new EquatableArray<ContainingTypeModel>(containingTypes),
             symbol.IsValueType,
-            typeKeyword,
+            symbol.GetDeclarationKeyword(),
             symbol.TypeArguments.Length,
             isPartial,
             supportsGenericUnsafe,
@@ -430,9 +446,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static ProviderModel CreateProviderModel(INamedTypeSymbol providerSymbol, TypeModel typeModel, ClosedGenericModel? closedGeneric)
     {
         var providerNs = String.IsNullOrEmpty(providerSymbol.ContainingNamespace.Name) ? string.Empty : providerSymbol.ContainingNamespace.ToDisplayString();
-        var providerKeyword = providerSymbol.IsRecord
-            ? (providerSymbol.IsValueType ? "record struct" : "record")
-            : (providerSymbol.IsValueType ? "struct" : "class");
+        var providerKeyword = providerSymbol.GetDeclarationKeyword();
 
         string targetName;
         string accessorName;
@@ -503,7 +517,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             new EquatableArray<ClosedGenericModel>(closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x)))));
 
         static RegistryTypeModel MakeRegistryType(TypeModel type) =>
-            new(type.Namespace, type.ClassName, type.TypeArgumentCount, type.Constructors.Count > 0);
+            new(type.Namespace, MakeTypePath(type), MakeFlatName(type), type.TypeArgumentCount, type.Constructors.Count > 0);
     }
 
     // ------------------------------------------------------------
@@ -512,6 +526,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private static bool SupportsGenericUnsafeAccessor(SyntaxTree tree) =>
         (tree.Options is CSharpParseOptions options) && options.PreprocessorSymbolNames.Contains("NET9_0_OR_GREATER");
+
+    private static bool IsPartialType(INamedTypeSymbol symbol) =>
+        symbol.DeclaringSyntaxReferences.Any(static x => (x.GetSyntax() is TypeDeclarationSyntax syntax) && syntax.Modifiers.Any(SyntaxKind.PartialKeyword));
+
+    private static bool IsAccessibleFromNamespace(INamedTypeSymbol symbol) =>
+        symbol.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal or Accessibility.ProtectedOrInternal;
 
     // ------------------------------------------------------------
     // Diagnostics
@@ -578,7 +598,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         var builder = new SourceBuilder();
         BuildClassSource(builder, type);
 
-        context.AddSource(HintNameBuilder.Build(type.Namespace, type.ClassName, "Accessor"), builder);
+        context.AddSource(HintNameBuilder.Build(type.Namespace, [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName, "Accessor"]), builder);
     }
 
     private static void ExecuteExternal(
@@ -633,7 +653,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.EnableNullable();
         builder.NewLine();
 
-        var className = MakeQualifiedName(type.Namespace, type.ClassName);
+        var className = MakeQualifiedName(type.Namespace, MakeTypePath(type));
         var members = type.Members;
         var readableMembers = members.Where(static x => x.CanRead).ToList();
         var writableMembers = members.Where(static x => x.CanWrite).ToList();
@@ -667,7 +687,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
 
         // IAccessorProvider / IConstructorProvider implementation on the partial target type
-        if (type.IsPartial)
+        if (type.IsPartial && type.ContainingTypes.All(static x => x.IsPartial))
         {
             builder.NewLine();
             BuildAccessorProviderPartialSource(builder, type, className);
@@ -679,7 +699,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         // Class
         builder.Indent()
             .Append("internal sealed class ")
-            .Append(MakeSuffixedName(type.ClassName, AccessorSuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), AccessorSuffix))
             .Append(" : global::BunnyTail.MemberAccessor.IAccessor")
             .NewLine();
         builder.BeginScope();
@@ -687,7 +707,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         // Singleton
         builder.Indent()
             .Append("internal static readonly ")
-            .Append(MakeSuffixedName(type.ClassName, AccessorSuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), AccessorSuffix))
             .Append(" Instance = new();")
             .NewLine();
         builder.NewLine();
@@ -784,7 +804,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder
             .Indent()
             .Append("internal sealed class ")
-            .Append(MakeSuffixedName(type.ClassName, AccessorFactorySuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), AccessorFactorySuffix))
             .Append(" : global::BunnyTail.MemberAccessor.IAccessorFactory<")
             .Append(className)
             .Append('>')
@@ -794,7 +814,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         // Singleton
         builder.Indent()
             .Append("internal static readonly ")
-            .Append(MakeSuffixedName(type.ClassName, AccessorFactorySuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), AccessorFactorySuffix))
             .Append(" Instance = new();")
             .NewLine();
         builder.NewLine();
@@ -940,7 +960,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             return $"{targetExpr}.{member.Name}";
         }
 
-        var bridge = MakeSuffixedName(type.ClassName, UnsafeAccessSuffix);
+        var bridge = MakeSuffixedName(MakeFlatName(type), UnsafeAccessSuffix);
         var argExpr = type.IsValueType ? $"ref {targetExpr}" : targetExpr;
         return member.IsField
             ? $"{bridge}.{BridgeFieldPrefix}{member.Name}({argExpr})"
@@ -954,7 +974,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             return $"{targetExpr}.{member.Name} = {valueExpr}";
         }
 
-        var bridge = MakeSuffixedName(type.ClassName, UnsafeAccessSuffix);
+        var bridge = MakeSuffixedName(MakeFlatName(type), UnsafeAccessSuffix);
         var argExpr = type.IsValueType ? $"ref {targetExpr}" : targetExpr;
         return member.IsField
             ? $"{bridge}.{BridgeFieldPrefix}{member.Name}({argExpr}) = {valueExpr}"
@@ -965,7 +985,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.Indent()
             .Append("internal sealed class ")
-            .Append(MakeSuffixedName(type.ClassName, ConstructorAccessorSuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), ConstructorAccessorSuffix))
             .Append(" : global::BunnyTail.MemberAccessor.IConstructor<")
             .Append(className)
             .Append('>')
@@ -975,7 +995,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         // Singleton
         builder.Indent()
             .Append("internal static readonly ")
-            .Append(MakeSuffixedName(type.ClassName, ConstructorAccessorSuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), ConstructorAccessorSuffix))
             .Append(" Instance = new();")
             .NewLine();
         builder.NewLine();
@@ -1165,7 +1185,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.Indent()
             .Append("internal static class ")
-            .Append(MakeSuffixedName(type.ClassName, UnsafeAccessSuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), UnsafeAccessSuffix))
             .NewLine();
         builder.BeginScope();
 
@@ -1244,6 +1264,17 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         var hasConstructor = type.Constructors.Count > 0;
 
+        foreach (var containingType in type.ContainingTypes)
+        {
+            builder.Indent()
+                .Append("partial ")
+                .Append(containingType.TypeKeyword)
+                .Append(' ')
+                .Append(containingType.ClassName)
+                .NewLine();
+            builder.BeginScope();
+        }
+
         builder.Indent()
             .Append("partial ")
             .Append(type.TypeKeyword)
@@ -1266,7 +1297,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("static global::BunnyTail.MemberAccessor.IAccessor global::BunnyTail.MemberAccessor.IAccessorProvider<")
             .Append(className)
             .Append(">.Accessor => ")
-            .Append(MakeSuffixedName(type.ClassName, AccessorSuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), AccessorSuffix))
             .Append(".Instance;")
             .NewLine();
         builder.NewLine();
@@ -1277,7 +1308,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("> global::BunnyTail.MemberAccessor.IAccessorProvider<")
             .Append(className)
             .Append(">.AccessorFactory => ")
-            .Append(MakeSuffixedName(type.ClassName, AccessorFactorySuffix))
+            .Append(MakeSuffixedName(MakeFlatName(type), AccessorFactorySuffix))
             .Append(".Instance;")
             .NewLine();
 
@@ -1290,12 +1321,17 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 .Append("> global::BunnyTail.MemberAccessor.IConstructorProvider<")
                 .Append(className)
                 .Append(">.Constructor => ")
-                .Append(MakeSuffixedName(type.ClassName, ConstructorAccessorSuffix))
+                .Append(MakeSuffixedName(MakeFlatName(type), ConstructorAccessorSuffix))
                 .Append(".Instance;")
                 .NewLine();
         }
 
         builder.EndScope();
+
+        for (var i = 0; i < type.ContainingTypes.Count; i++)
+        {
+            builder.EndScope();
+        }
     }
 
     private static void BuildProviderSource(SourceBuilder builder, ProviderModel provider)
@@ -1403,15 +1439,15 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             if (type.TypeArgumentCount == 0)
             {
                 // Register members and factory
-                var targetName = MakeQualifiedName(type.Namespace, type.ClassName);
+                var targetName = MakeQualifiedName(type.Namespace, type.TypePath);
                 builder
                     .Indent()
                     .Append("global::BunnyTail.MemberAccessor.Internal.AccessorRegistry.RegisterFactory(typeof(")
                     .Append(targetName)
                     .Append("), ")
-                    .Append(MakeQualifiedName(type.Namespace, $"{type.ClassName}{AccessorSuffix}"))
+                    .Append(MakeQualifiedName(type.Namespace, $"{type.FlatName}{AccessorSuffix}"))
                     .Append(".Instance, ")
-                    .Append(MakeQualifiedName(type.Namespace, $"{type.ClassName}{AccessorFactorySuffix}"))
+                    .Append(MakeQualifiedName(type.Namespace, $"{type.FlatName}{AccessorFactorySuffix}"))
                     .Append(".Instance);")
                     .NewLine();
 
@@ -1425,7 +1461,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                         .Append(">(typeof(")
                         .Append(targetName)
                         .Append("), ")
-                        .Append(MakeQualifiedName(type.Namespace, $"{type.ClassName}{ConstructorAccessorSuffix}"))
+                        .Append(MakeQualifiedName(type.Namespace, $"{type.FlatName}{ConstructorAccessorSuffix}"))
                         .Append(".Instance);")
                         .NewLine();
                 }
@@ -1433,7 +1469,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             else
             {
                 // Open generic type
-                var prefix = OpenNamePart(type.ClassName);
+                var prefix = OpenNamePart(type.TypePath);
                 foreach (var closedType in closedTypes)
                 {
                     if ((type.Namespace == closedType.Namespace) &&
@@ -1537,6 +1573,12 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static string MakeQualifiedName(string ns, string name) =>
         String.IsNullOrEmpty(ns) ? $"global::{name}" : $"global::{ns}.{name}";
 
+    private static string MakeTypePath(TypeModel type) =>
+        String.Join(".", [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName]);
+
+    private static string MakeFlatName(TypeModel type) =>
+        String.Join("__", [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName]);
+
     private static string OpenNamePart(string className)
     {
         var index = className.IndexOf('<');
@@ -1550,7 +1592,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         $"<{new string(',', count - 1)}>";
 
     private static string MakeTypeKey(TypeModel type) =>
-        $"{type.Namespace}/{type.ClassName}";
+        $"{type.Namespace}/{MakeTypePath(type)}";
 
     private static string MakeClosedTypeKey(ClosedGenericModel closedType) =>
         $"{closedType.Namespace}/{OpenNamePart(closedType.ClassName)}{MakeTypeArgumentsPart(closedType.TypeArguments)}";
