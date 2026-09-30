@@ -8,8 +8,8 @@ internal sealed record TypeModel(
     EquatableArray<ContainingTypeModel> ContainingTypes,
     bool IsValueType,
     string TypeKeyword,
-    int TypeArgumentCount,
+    EquatableArray<string> TypeParameters,
+    string Constraints,
     bool IsPartial,
-    bool SupportsGenericUnsafeAccessor,
     EquatableArray<ConstructorModel> Constructors,
     EquatableArray<MemberModel> Members);

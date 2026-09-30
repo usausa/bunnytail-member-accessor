@@ -72,7 +72,7 @@ var b = ctor.Create("text");  // -> Sample(string)
 var c = ctor.Create(1.0);     // -> NotSupportedException
 ```
 
-Reflection-style, by `object` array:
+Reflection-style, by `object` array.
 
 ```csharp
 var ctor = AccessorProvider.FindConstructor(type)!;
@@ -205,7 +205,7 @@ var factory2 = AccessorProvider.FindFactory(typeof(Data));
 ## Supported Members
 
 - `readonly` fields and read-only / `init`-only properties are read-only (typed setter returns `null`)
-- Inherited properties are flattened
+- Inherited properties and fields are flattened
 - `record` / `record struct` are treated as class / struct
 - `static` members and indexers are not supported
 

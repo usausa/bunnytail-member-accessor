@@ -4,6 +4,7 @@ using SourceGenerateHelper;
 
 internal sealed record ConstructorParameterModel(
     string Type,
+    string TypeOfName,
     string Name,
     string CheckType,
     bool AllowsNull);

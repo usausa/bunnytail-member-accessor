@@ -20,6 +20,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private const string TypedAccessorAttributeName = "BunnyTail.MemberAccessor.TypedAccessorAttribute";
     private const string GenerateAccessorForAttributeName = "BunnyTail.MemberAccessor.GenerateAccessorForAttribute";
     private const string AccessorMemberAttributeName = "BunnyTail.MemberAccessor.AccessorMemberAttribute";
+    private const string SetsRequiredMembersAttributeName = "System.Diagnostics.CodeAnalysis.SetsRequiredMembersAttribute";
 
     private const string AccessorSuffix = "_Accessor";
     private const string AccessorFactorySuffix = "_AccessorFactory";
@@ -32,6 +33,9 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     // Maximum constructor arity supported by IConstructor<T>.Create overloads
     private const int MaxConstructorArity = 16;
+
+    private static readonly SymbolDisplayFormat ExpandedTupleFormat =
+        SymbolDisplayFormat.FullyQualifiedFormat.AddMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.ExpandValueTuple);
 
     // ------------------------------------------------------------
     // Initialize
@@ -60,21 +64,33 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 static (context, _) => GetExternalModels(context))
             .Collect();
 
+        var treeProvider = context.ForAttributeWithMetadataNameSyntaxTrees(
+                GenerateAccessorAttributeName,
+                static (syntax, _) => IsTypeSyntax(syntax))
+            .Combine(context.ForAttributeWithMetadataNameSyntaxTrees(TypedAccessorAttributeName, static (_, _) => true))
+            .Combine(context.ForAttributeWithMetadataNameSyntaxTrees(GenerateAccessorForAttributeName, static (_, _) => true))
+            .Select(static (trees, _) => trees.Left.Left.AddRange(trees.Left.Right).AddRange(trees.Right));
+
         context.RegisterSourceOutput(
-            typeProvider.Combine(closedGenericProvider).Combine(externalProvider),
-            static (context, provider) => ReportDiagnostics(context, provider.Left.Left, provider.Left.Right, provider.Right));
+            typeProvider.Combine(closedGenericProvider).Combine(externalProvider).Combine(treeProvider),
+            static (context, provider) => ReportDiagnostics(context, provider.Left.Left.Left, provider.Left.Left.Right, provider.Left.Right, provider.Right));
+
+        var collisionProvider = typeProvider
+            .Combine(externalProvider)
+            .Select(static (provider, _) => new EquatableArray<string>(FindHintNameCollisions(provider.Left, provider.Right).Select(static x => x.HintName)))
+            .WithTrackingName("Collisions");
 
         var models = typeProvider.SelectMany(static (types, _) => types.SelectValue().ToImmutableArray());
         context.RegisterImplementationSourceOutput(
-            models,
-            static (context, type) => ExecuteClass(context, type));
+            models.Combine(collisionProvider),
+            static (context, provider) => ExecuteClass(context, provider.Left, provider.Right));
 
         var typeKeyProvider = typeProvider
             .Select(static (types, _) => new EquatableArray<string>(types.SelectValue().Select(MakeTypeKey)))
             .WithTrackingName("TypeKeys");
         context.RegisterImplementationSourceOutput(
-            externalProvider.Combine(typeKeyProvider),
-            static (context, provider) => ExecuteExternal(context, provider.Left, provider.Right));
+            externalProvider.Combine(typeKeyProvider).Combine(collisionProvider),
+            static (context, provider) => ExecuteExternal(context, provider.Left.Left, provider.Left.Right, provider.Right));
 
         var registryProvider = typeProvider
             .Combine(closedGenericProvider)
@@ -97,15 +113,22 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         var symbol = (INamedTypeSymbol)context.TargetSymbol;
         var syntax = (TypeDeclarationSyntax)context.TargetNode;
+        var location = syntax.Identifier.GetLocation();
+
+        if (symbol.IsStatic || symbol.IsRefLikeType)
+        {
+            return Results.Error<TypeModel>(new DiagnosticInfo(Diagnostics.UnsupportedType, location, symbol.Name));
+        }
+
         var isPartial = syntax.Modifiers.Any(SyntaxKind.PartialKeyword);
         var supportsGenericUnsafe = SupportsGenericUnsafeAccessor(context.TargetNode.SyntaxTree);
 
-        return GetTypeModel(symbol, syntax.Identifier.GetLocation(), isPartial, sameAssembly: true, supportsGenericUnsafe);
+        return GetTypeModel(symbol, location, isPartial, sameAssembly: true, supportsGenericUnsafe, context.SemanticModel.Compilation);
     }
 
-    private static Result<TypeModel> GetTypeModel(INamedTypeSymbol symbol, Location location, bool isPartial, bool sameAssembly, bool supportsGenericUnsafe)
+    private static Result<TypeModel> GetTypeModel(INamedTypeSymbol symbol, Location? location, bool isPartial, bool sameAssembly, bool supportsGenericUnsafe, Compilation compilation)
     {
-        var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name) ? string.Empty : symbol.ContainingNamespace.ToDisplayString();
+        var ns = GetNamespace(symbol);
 
         // Collect containing types
         var containingSymbols = symbol.GetContainingTypes();
@@ -116,10 +139,15 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 return Results.Error<TypeModel>(new DiagnosticInfo(Diagnostics.NestedGenericTypeNotSupported, location, symbol.Name));
             }
 
-            if (!IsAccessibleFromNamespace(symbol) || containingSymbols.Any(static x => !IsAccessibleFromNamespace(x)))
+            if (!IsAccessibleFromNamespace(symbol) || containingSymbols.Any(static x => !IsAccessibleFromNamespace(x) || x.IsFileLocal))
             {
                 return Results.Error<TypeModel>(new DiagnosticInfo(Diagnostics.NestedTypeNotAccessible, location, symbol.Name));
             }
+        }
+
+        if (symbol.IsFileLocal)
+        {
+            return Results.Error<TypeModel>(new DiagnosticInfo(Diagnostics.NestedTypeNotAccessible, location, symbol.Name));
         }
 
         var containingTypes = containingSymbols
@@ -127,16 +155,102 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .ToArray();
 
         // Collect instance members
-        var members = new List<MemberModel>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var current = symbol;
-        while ((current is not null) && (current.SpecialType != SpecialType.System_Object))
+        var members = CollectMembers(symbol, sameAssembly, out var hasRequiredMembers);
+
+        // Collect constructors
+        var publicConstructors = new List<IMethodSymbol>();
+        if (!symbol.IsAbstract)
         {
+            foreach (var constructor in symbol.InstanceConstructors)
+            {
+                if (IsSupportedConstructor(constructor, hasRequiredMembers))
+                {
+                    if (constructor.Parameters.Length > MaxConstructorArity)
+                    {
+                        return Results.Error<TypeModel>(new DiagnosticInfo(
+                            Diagnostics.UnsupportedConstructorArity,
+                            location,
+                            symbol.Name,
+                            MaxConstructorArity.ToString(CultureInfo.InvariantCulture)));
+                    }
+
+                    publicConstructors.Add(constructor);
+                }
+            }
+        }
+
+        var orderedConstructors = OrderConstructors(publicConstructors, compilation);
+        var constructors = new ConstructorModel[orderedConstructors.Count];
+        var hasDeclaredConstructor = false;
+        for (var i = 0; i < orderedConstructors.Count; i++)
+        {
+            var constructor = orderedConstructors[i];
+            var parameters = new ConstructorParameterModel[constructor.Parameters.Length];
+            for (var j = 0; j < parameters.Length; j++)
+            {
+                parameters[j] = CreateParameterModel(constructor.Parameters[j]);
+            }
+
+            constructors[i] = new ConstructorModel(new EquatableArray<ConstructorParameterModel>(parameters));
+            hasDeclaredConstructor |= !constructor.IsImplicitlyDeclared;
+        }
+
+        var className = symbol.GetClassName();
+        var diagnostics = new List<DiagnosticInfo>();
+
+        if ((members.Count == 0) && !hasDeclaredConstructor)
+        {
+            diagnostics.Add(new DiagnosticInfo(Diagnostics.NoAccessibleMembers, location, className));
+        }
+
+        // UnsafeAccessor with generic parameters requires .NET 9 or later
+        if ((symbol.Arity > 0) && !supportsGenericUnsafe && members.Any(static x => x.RequiresUnsafe))
+        {
+            diagnostics.Add(new DiagnosticInfo(Diagnostics.GenericUnsafeAccessorNotSupported, location, className));
+        }
+
+        var model = new TypeModel(
+            ns,
+            className,
+            new EquatableArray<ContainingTypeModel>(containingTypes),
+            symbol.IsValueType,
+            symbol.GetDeclarationKeyword(),
+            new EquatableArray<string>(symbol.TypeParameters.Select(static x => x.Name).ToArray()),
+            MakeConstraintClauses(symbol),
+            isPartial,
+            new EquatableArray<ConstructorModel>(constructors),
+            new EquatableArray<MemberModel>(members));
+        return new Result<TypeModel>(model, new EquatableArray<DiagnosticInfo>(diagnostics));
+    }
+
+    private static List<MemberModel> CollectMembers(INamedTypeSymbol symbol, bool sameAssembly, out bool hasRequiredMembers)
+    {
+        var members = new List<MemberModel>();
+        HashSet<string>? hidden = null;
+        hasRequiredMembers = false;
+        for (var current = symbol; (current is not null) && (current.SpecialType != SpecialType.System_Object); current = current.BaseType)
+        {
+            var internalVisible = sameAssembly && SymbolEqualityComparer.Default.Equals(current.ContainingAssembly, symbol.ContainingAssembly);
+
+            var hasBase = current.BaseType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_ValueType) };
+            var declared = hasBase ? new List<string>() : null;
             foreach (var member in current.GetMembers())
             {
+                hasRequiredMembers |= member is IPropertySymbol { IsRequired: true } or IFieldSymbol { IsRequired: true };
+
+                if ((hidden is not null) && hidden.Contains(member.Name))
+                {
+                    continue;
+                }
+
+                if (IsVisible(member.DeclaredAccessibility, internalVisible))
+                {
+                    declared?.Add(member.Name);
+                }
+
                 if (member is IPropertySymbol property)
                 {
-                    if (property.IsStatic || property.IsIndexer)
+                    if (property.IsStatic || property.IsIndexer || !IsSupportedType(property.Type) || IsObsoleteError(property))
                     {
                         continue;
                     }
@@ -144,36 +258,26 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                     var (ignore, optIn) = GetMemberAttributeInfo(property);
                     if (ignore)
                     {
-                        seen.Add(property.Name);
+                        declared?.Add(property.Name);
                         continue;
                     }
 
-                    var getterAccess = ClassifyAccessor(property.GetMethod, optIn, sameAssembly);
+                    var getterAccess = ClassifyAccessor(property.GetMethod, optIn, internalVisible);
                     var setterAccess = ((property.SetMethod is not null) && property.SetMethod.IsInitOnly)
                         ? MemberAccess.None
-                        : ClassifyAccessor(property.SetMethod, optIn, sameAssembly);
+                        : ClassifyAccessor(property.SetMethod, optIn, internalVisible);
                     if ((getterAccess == MemberAccess.None) && (setterAccess == MemberAccess.None))
                     {
                         continue;
                     }
 
-                    if (seen.Add(property.Name))
-                    {
-                        var unsafeTargetType = ((getterAccess == MemberAccess.Unsafe) || (setterAccess == MemberAccess.Unsafe))
-                            ? member.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-                            : string.Empty;
-                        members.Add(new MemberModel(
-                            property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                            property.Name,
-                            false,
-                            getterAccess,
-                            setterAccess,
-                            unsafeTargetType));
-                    }
+                    declared?.Add(property.Name);
+                    members.Add(CreateMemberModel(property, property.Type, false, getterAccess, setterAccess));
                 }
                 else if (member is IFieldSymbol field)
                 {
-                    if (field.IsStatic || field.IsConst || field.IsImplicitlyDeclared || (field.AssociatedSymbol is not null))
+                    if (field.IsStatic || field.IsConst || field.IsImplicitlyDeclared || (field.AssociatedSymbol is not null) ||
+                        !IsSupportedType(field.Type) || IsObsoleteError(field))
                     {
                         continue;
                     }
@@ -181,101 +285,161 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                     var (ignore, optIn) = GetMemberAttributeInfo(field);
                     if (ignore)
                     {
-                        seen.Add(field.Name);
+                        declared?.Add(field.Name);
                         continue;
                     }
 
-                    var access = ClassifyAccessibility(field.DeclaredAccessibility, optIn, sameAssembly);
+                    var access = ClassifyAccessibility(field.DeclaredAccessibility, optIn, internalVisible);
                     if (access == MemberAccess.None)
                     {
                         continue;
                     }
 
-                    var setterAccess = field.IsReadOnly ? MemberAccess.None : access;
-                    if (seen.Add(field.Name))
-                    {
-                        var unsafeTargetType = (access == MemberAccess.Unsafe)
-                            ? member.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-                            : string.Empty;
-                        members.Add(new MemberModel(
-                            field.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
-                            field.Name,
-                            true,
-                            access,
-                            setterAccess,
-                            unsafeTargetType));
-                    }
+                    declared?.Add(field.Name);
+                    members.Add(CreateMemberModel(field, field.Type, true, access, field.IsReadOnly ? MemberAccess.None : access));
                 }
             }
-            current = current.BaseType;
+
+            if (hidden is null)
+            {
+                hidden = declared is not null ? new HashSet<string>(declared, StringComparer.Ordinal) : null;
+            }
+            else if (declared is not null)
+            {
+                hidden.UnionWith(declared);
+            }
         }
 
-        // Collect constructors
-        var publicConstructors = symbol.InstanceConstructors
-            .Where(static x => x.DeclaredAccessibility == Accessibility.Public)
-            .ToList();
-        if (symbol.IsAbstract)
+        return members;
+    }
+
+    private static MemberModel CreateMemberModel(ISymbol member, ITypeSymbol type, bool isField, MemberAccess getterAccess, MemberAccess setterAccess)
+    {
+        var unsafeTargetType = ((getterAccess == MemberAccess.Unsafe) || (setterAccess == MemberAccess.Unsafe))
+            ? member.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            : string.Empty;
+        return new MemberModel(
+            type.ToDisplayString(SymbolDisplayFormats.FullyQualifiedNullable),
+            type.ToTypeOfName(),
+            member.Name,
+            isField,
+            getterAccess,
+            setterAccess,
+            unsafeTargetType);
+    }
+
+    private static bool IsSupportedType(ITypeSymbol type) =>
+        !type.IsRefLikeType && (type.TypeKind is not (TypeKind.Pointer or TypeKind.FunctionPointer));
+
+    private static bool IsObsoleteError(ISymbol symbol) =>
+        symbol.IsObsolete(out var isError) && isError;
+
+    private static bool IsSupportedConstructor(IMethodSymbol constructor, bool hasRequiredMembers)
+    {
+        if ((constructor.DeclaredAccessibility != Accessibility.Public) ||
+            IsObsoleteError(constructor) ||
+            (hasRequiredMembers && !constructor.HasAttribute(SetsRequiredMembersAttributeName)))
         {
-            publicConstructors = [];
+            return false;
         }
 
-        if (publicConstructors.Any(static x => x.Parameters.Length > MaxConstructorArity))
+        foreach (var parameter in constructor.Parameters)
         {
-            return Results.Error<TypeModel>(new DiagnosticInfo(
-                Diagnostics.UnsupportedConstructorArity,
-                location,
-                symbol.Name,
-                MaxConstructorArity.ToString(CultureInfo.InvariantCulture)));
+            if ((parameter.RefKind is not (RefKind.None or RefKind.In)) || !IsSupportedType(parameter.Type))
+            {
+                return false;
+            }
         }
 
-        var constructors = publicConstructors
-            .OrderBy(static x => x.Parameters.Length)
-            .Select(static x => new ConstructorModel(new EquatableArray<ConstructorParameterModel>(x.Parameters.Select(CreateParameterModel))))
-            .ToArray();
+        return true;
+    }
 
-        return Results.Success(new TypeModel(
-            ns,
-            symbol.GetClassName(),
-            new EquatableArray<ContainingTypeModel>(containingTypes),
-            symbol.IsValueType,
-            symbol.GetDeclarationKeyword(),
-            symbol.TypeArguments.Length,
-            isPartial,
-            supportsGenericUnsafe,
-            new EquatableArray<ConstructorModel>(constructors),
-            new EquatableArray<MemberModel>(members)));
+    private static List<IMethodSymbol> OrderConstructors(List<IMethodSymbol> constructors, Compilation compilation)
+    {
+        var ordered = new List<IMethodSymbol>(constructors.Count);
+        foreach (var constructor in constructors.OrderBy(static x => x.Parameters.Length))
+        {
+            var index = ordered.Count;
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                if ((ordered[i].Parameters.Length == constructor.Parameters.Length) && IsMoreSpecific(constructor, ordered[i], compilation))
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            ordered.Insert(index, constructor);
+        }
+
+        return ordered;
+    }
+
+    private static bool IsMoreSpecific(IMethodSymbol constructor, IMethodSymbol other, Compilation compilation)
+    {
+        if (compilation is not CSharpCompilation csharp)
+        {
+            return false;
+        }
+
+        var more = false;
+        for (var i = 0; i < constructor.Parameters.Length; i++)
+        {
+            var type = constructor.Parameters[i].Type;
+            var otherType = other.Parameters[i].Type;
+            if (SymbolEqualityComparer.Default.Equals(type, otherType))
+            {
+                continue;
+            }
+
+            var conversion = csharp.ClassifyConversion(type, otherType);
+            if (!conversion.IsImplicit || !(conversion.IsIdentity || conversion.IsReference || conversion.IsBoxing))
+            {
+                return false;
+            }
+
+            more |= !conversion.IsIdentity;
+        }
+
+        return more;
     }
 
     private static ConstructorParameterModel CreateParameterModel(IParameterSymbol parameter)
     {
         var type = parameter.Type;
-        var typeName = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
         // Nullable<T> is matched by its underlying type at runtime
-        if ((type is INamedTypeSymbol named) && (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T))
-        {
-            return new ConstructorParameterModel(typeName, parameter.Name, named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), true);
-        }
+        var isNullable = (type is INamedTypeSymbol named) && (named.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T);
+        var checkType = isNullable ? ((INamedTypeSymbol)type).TypeArguments[0] : type;
 
-        return new ConstructorParameterModel(typeName, parameter.Name, typeName, !type.IsValueType);
+        return new ConstructorParameterModel(
+            type.ToDisplayString(SymbolDisplayFormats.FullyQualifiedNullable),
+            type.ToTypeOfName(),
+            parameter.Name,
+            checkType.TypeKind == TypeKind.Dynamic ? "object" : checkType.ToDisplayString(ExpandedTupleFormat),
+            isNullable || !type.IsValueType);
     }
 
     private static (bool Ignore, bool OptIn) GetMemberAttributeInfo(ISymbol member)
     {
-        var attribute = member.GetAttributes().FirstOrDefault(static x => x.AttributeClass?.ToDisplayString() == AccessorMemberAttributeName);
+        var attribute = member.FindAttribute(AccessorMemberAttributeName);
         if (attribute is null)
         {
             return (false, false);
         }
 
-        var ignore = attribute.NamedArguments.Any(static x => (x.Key == "Ignore") && (x.Value.Value is true));
+        var ignore = attribute.TryGetNamedArgument<bool>("Ignore", out var value) && value;
         return (ignore, !ignore);
     }
 
-    private static MemberAccess ClassifyAccessor(IMethodSymbol? method, bool optIn, bool sameAssembly) =>
-        method is null ? MemberAccess.None : ClassifyAccessibility(method.DeclaredAccessibility, optIn, sameAssembly);
+    private static bool IsVisible(Accessibility accessibility, bool internalVisible) =>
+        (accessibility == Accessibility.Public) ||
+        (internalVisible && (accessibility is Accessibility.Internal or Accessibility.ProtectedOrInternal));
 
-    private static MemberAccess ClassifyAccessibility(Accessibility accessibility, bool optIn, bool sameAssembly)
+    private static MemberAccess ClassifyAccessor(IMethodSymbol? method, bool optIn, bool internalVisible) =>
+        method is null ? MemberAccess.None : ClassifyAccessibility(method.DeclaredAccessibility, optIn, internalVisible);
+
+    private static MemberAccess ClassifyAccessibility(Accessibility accessibility, bool optIn, bool internalVisible)
     {
         if (accessibility == Accessibility.Public)
         {
@@ -289,9 +453,53 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         return accessibility switch
         {
-            Accessibility.Internal or Accessibility.ProtectedOrInternal => sameAssembly ? MemberAccess.Direct : MemberAccess.Unsafe,
+            Accessibility.Internal or Accessibility.ProtectedOrInternal => internalVisible ? MemberAccess.Direct : MemberAccess.Unsafe,
             _ => MemberAccess.Unsafe
         };
+    }
+
+    private static string MakeConstraintClauses(INamedTypeSymbol symbol)
+    {
+        var builder = new StringBuilder();
+        foreach (var typeParameter in symbol.TypeParameters)
+        {
+            var constraints = new List<string>();
+            if (typeParameter.HasReferenceTypeConstraint)
+            {
+                constraints.Add(typeParameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated ? "class?" : "class");
+            }
+            else if (typeParameter.HasUnmanagedTypeConstraint)
+            {
+                constraints.Add("unmanaged");
+            }
+            else if (typeParameter.HasValueTypeConstraint)
+            {
+                constraints.Add("struct");
+            }
+            else if (typeParameter.HasNotNullConstraint)
+            {
+                constraints.Add("notnull");
+            }
+
+            for (var i = 0; i < typeParameter.ConstraintTypes.Length; i++)
+            {
+                constraints.Add(typeParameter.ConstraintTypes[i]
+                    .WithNullableAnnotation(typeParameter.ConstraintNullableAnnotations[i])
+                    .ToDisplayString(SymbolDisplayFormats.FullyQualifiedNullable));
+            }
+
+            if (typeParameter.HasConstructorConstraint)
+            {
+                constraints.Add("new()");
+            }
+
+            if (constraints.Count > 0)
+            {
+                builder.Append(" where ").Append(CSharpIdentifier.EscapeTypeName(typeParameter.Name)).Append(" : ").Append(String.Join(", ", constraints));
+            }
+        }
+
+        return builder.ToString();
     }
 
     // ------------------------------------------------------------
@@ -301,59 +509,49 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static EquatableArray<Result<ClosedGenericModel>> GetClosedGenericModel(GeneratorAttributeSyntaxContext context)
     {
         var list = new List<Result<ClosedGenericModel>>();
-        if (context.TargetSymbol is ISourceAssemblySymbol assemblySymbol)
+        var openGenericSymbol = (context.TargetSymbol as INamedTypeSymbol)?.OriginalDefinition;
+
+        // ReSharper disable once LoopCanBeConvertedToQuery
+        foreach (var data in context.Attributes)
         {
-            // ReSharper disable once LoopCanBeConvertedToQuery
-            foreach (var data in assemblySymbol.GetAttributes().Where(Predicate))
-            {
-                list.Add(GetClosedGenericModel(context.TargetNode, null, data));
-            }
-        }
-        else if (context.TargetSymbol is INamedTypeSymbol classSymbol)
-        {
-            // ReSharper disable once LoopCanBeConvertedToQuery
-            foreach (var data in classSymbol.GetAttributes().Where(Predicate))
-            {
-                list.Add(GetClosedGenericModel(context.TargetNode, classSymbol.OriginalDefinition, data));
-            }
+            list.Add(GetClosedGenericModel(openGenericSymbol, data));
         }
 
         return new(list);
-
-        static bool Predicate(AttributeData data) => data.AttributeClass?.ToDisplayString() == TypedAccessorAttributeName;
     }
 
-    private static Result<ClosedGenericModel> GetClosedGenericModel(SyntaxNode syntax, INamedTypeSymbol? openGenericSymbol, AttributeData attributeData)
+    private static Result<ClosedGenericModel> GetClosedGenericModel(INamedTypeSymbol? openGenericSymbol, AttributeData attributeData)
     {
-        if (attributeData.ConstructorArguments[0].Value is not INamedTypeSymbol symbol)
+        if (!attributeData.TryGetConstructorArgument<INamedTypeSymbol>(0, out var symbol) || (symbol.TypeKind == TypeKind.Error))
         {
             return Results.Errors<ClosedGenericModel>();
         }
 
+        var location = attributeData.ApplicationSyntaxReference?.GetSyntax().GetLocation();
         if (!symbol.IsGenericType)
         {
-            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidTypeArgument, syntax.GetLocation(), symbol.Name));
+            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidTypeArgument, location, symbol.Name));
         }
 
         if ((openGenericSymbol is not null) && !SymbolEqualityComparer.Default.Equals(openGenericSymbol, symbol.OriginalDefinition))
         {
-            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidAttributeLocation, syntax.GetLocation(), symbol.Name));
+            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.InvalidAttributeLocation, location, symbol.Name));
         }
 
         // The target type must be decorated with GenerateAccessorAttribute
-        if (!symbol.OriginalDefinition.GetAttributes().Any(static x => x.AttributeClass?.ToDisplayString() == GenerateAccessorAttributeName))
+        if (!symbol.OriginalDefinition.HasAttribute(GenerateAccessorAttributeName))
         {
-            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.TypedAccessorTargetNotDecorated, syntax.GetLocation(), symbol.Name));
+            return Results.Error<ClosedGenericModel>(new DiagnosticInfo(Diagnostics.TypedAccessorTargetNotDecorated, location, symbol.Name));
         }
 
-        var ns = String.IsNullOrEmpty(symbol.ContainingNamespace.Name) ? string.Empty : symbol.ContainingNamespace.ToDisplayString();
-        var typeArguments = symbol.TypeArguments.Select(static x => x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).ToArray();
-
-        return Results.Success(new ClosedGenericModel(
-            ns,
-            symbol.GetClassName(),
-            new EquatableArray<string>(typeArguments)));
+        return Results.Success(CreateClosedGenericModel(symbol));
     }
+
+    private static ClosedGenericModel CreateClosedGenericModel(INamedTypeSymbol symbol) =>
+        new(
+            GetNamespace(symbol),
+            symbol.GetClassName(),
+            new EquatableArray<string>(symbol.TypeArguments.Select(static x => x.ToDisplayString(ExpandedTupleFormat)).ToArray()));
 
     // ------------------------------------------------------------
     // Parser : ExternalModel
@@ -367,23 +565,30 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         // Provider type information
         var providerSymbol = context.TargetSymbol as INamedTypeSymbol;
-        var providerIsPartial = (context.TargetNode is TypeDeclarationSyntax typeSyntax) && typeSyntax.Modifiers.Any(SyntaxKind.PartialKeyword);
+        var providerSyntax = context.TargetNode as TypeDeclarationSyntax;
+        var canImplementProvider = providerSymbol is { IsStatic: false, IsFileLocal: false } &&
+                                   (providerSyntax is not null) && providerSyntax.Modifiers.Any(SyntaxKind.PartialKeyword) &&
+                                   providerSymbol.GetContainingTypes().All(IsPartialType);
         var providerNotPartialReported = false;
 
-        var attributes = context.TargetSymbol.GetAttributes().Where(static x => x.AttributeClass?.ToDisplayString() == GenerateAccessorForAttributeName);
-        foreach (var data in attributes)
+        foreach (var data in context.Attributes)
         {
-            var location = context.TargetNode.GetLocation();
-
-            if (data.ConstructorArguments[0].Value is not INamedTypeSymbol target)
+            if (!data.TryGetConstructorArgument(0, out var argument) || (argument.Value is ITypeSymbol { TypeKind: TypeKind.Error }))
             {
-                list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.InvalidExternalTarget, location, data.ConstructorArguments[0].Value?.ToString() ?? "unknown")));
+                continue;
+            }
+
+            var location = data.ApplicationSyntaxReference?.GetSyntax().GetLocation();
+            if (argument.Value is not INamedTypeSymbol target)
+            {
+                list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.InvalidExternalTarget, location, argument.Value?.ToString() ?? "unknown")));
                 continue;
             }
 
             if ((target.TypeKind is not (TypeKind.Class or TypeKind.Struct)) ||
                 target.IsStatic ||
                 target.IsRefLikeType ||
+                target.IsFileLocal ||
                 (target.ContainingType is not null) ||
                 !compilation.IsSymbolAccessibleWithin(target.OriginalDefinition, compilation.Assembly))
             {
@@ -392,17 +597,13 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             }
 
             var sameAssembly = SymbolEqualityComparer.Default.Equals(target.ContainingAssembly, compilation.Assembly);
-            var hasGenerateAccessor = sameAssembly &&
-                                      target.OriginalDefinition.GetAttributes().Any(static x => x.AttributeClass?.ToDisplayString() == GenerateAccessorAttributeName);
+            var hasGenerateAccessor = sameAssembly && target.OriginalDefinition.HasAttribute(GenerateAccessorAttributeName);
 
-            var definition = target.OriginalDefinition;
-            var typeResult = GetTypeModel(definition, location, isPartial: false, sameAssembly, supportsGenericUnsafe);
+            var typeResult = GetTypeModel(target.OriginalDefinition, location, isPartial: false, sameAssembly, supportsGenericUnsafe, compilation);
+            var diagnostics = hasGenerateAccessor ? [] : typeResult.Diagnostics.ToList();
             if (!typeResult.HasValue)
             {
-                foreach (var info in typeResult.Diagnostics)
-                {
-                    list.Add(Results.Error<ExternalModel>(info));
-                }
+                list.Add(Results.Errors<ExternalModel>(diagnostics));
                 continue;
             }
 
@@ -411,9 +612,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             ClosedGenericModel? closedGeneric = null;
             if (target.IsGenericType && !target.IsUnboundGenericType)
             {
-                var ns = String.IsNullOrEmpty(target.ContainingNamespace.Name) ? string.Empty : target.ContainingNamespace.ToDisplayString();
-                var typeArguments = target.TypeArguments.Select(static x => x.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)).ToArray();
-                closedGeneric = new ClosedGenericModel(ns, target.GetClassName(), new EquatableArray<string>(typeArguments));
+                closedGeneric = CreateClosedGenericModel(target);
             }
 
             // Provider implementation is only possible for closed types
@@ -421,23 +620,25 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             var closedTarget = !target.IsGenericType || (closedGeneric is not null);
             if ((providerSymbol is not null) && closedTarget)
             {
-                if (providerIsPartial)
+                if (canImplementProvider)
                 {
                     provider = CreateProviderModel(providerSymbol, typeModel, closedGeneric);
                 }
                 else if (!providerNotPartialReported)
                 {
                     providerNotPartialReported = true;
-                    list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.TypeNotPartial, location, providerSymbol.Name)));
+                    diagnostics.Add(new DiagnosticInfo(Diagnostics.TypeNotPartial, providerSyntax?.Identifier.GetLocation() ?? location, providerSymbol.Name));
                 }
             }
 
-            if (hasGenerateAccessor)
+            if (hasGenerateAccessor && (provider is null) && (closedGeneric is null))
             {
-                list.Add(Results.Error<ExternalModel>(new DiagnosticInfo(Diagnostics.AccessorAlreadyGenerated, location, target.Name)));
+                diagnostics.Add(new DiagnosticInfo(Diagnostics.AccessorAlreadyGenerated, location, target.Name));
             }
 
-            list.Add(Results.Success(new ExternalModel(typeModel, closedGeneric, provider, hasGenerateAccessor)));
+            list.Add(new Result<ExternalModel>(
+                new ExternalModel(typeModel, closedGeneric, provider, hasGenerateAccessor),
+                new EquatableArray<DiagnosticInfo>(diagnostics)));
         }
 
         return new(list);
@@ -445,7 +646,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private static ProviderModel CreateProviderModel(INamedTypeSymbol providerSymbol, TypeModel typeModel, ClosedGenericModel? closedGeneric)
     {
-        var providerNs = String.IsNullOrEmpty(providerSymbol.ContainingNamespace.Name) ? string.Empty : providerSymbol.ContainingNamespace.ToDisplayString();
+        var providerNs = GetNamespace(providerSymbol);
         var providerKeyword = providerSymbol.GetDeclarationKeyword();
 
         string targetName;
@@ -473,9 +674,14 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 : string.Empty;
         }
 
+        var containingTypes = providerSymbol.GetContainingTypes()
+            .Select(static x => new ContainingTypeModel(x.GetClassName(), x.GetDeclarationKeyword(), true))
+            .ToArray();
+
         return new ProviderModel(
             providerNs,
             providerSymbol.GetClassName(),
+            new EquatableArray<ContainingTypeModel>(containingTypes),
             providerKeyword,
             targetName,
             accessorName,
@@ -492,14 +698,18 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         ImmutableArray<EquatableArray<Result<ClosedGenericModel>>> closedGenerics,
         ImmutableArray<EquatableArray<Result<ExternalModel>>> externals)
     {
-        var targetTypes = types.SelectValue().Select(MakeRegistryType).ToList();
+        var collisions = new HashSet<string>(FindHintNameCollisions(types, externals).Select(static x => x.HintName), StringComparer.Ordinal);
+        var dropped = new HashSet<string>(
+            types.SelectValue().Where(x => collisions.Contains(MakeClassHintName(x))).Select(static x => MakeOpenKey(x.Namespace, x.ClassName, x.TypeParameters.Count)),
+            StringComparer.Ordinal);
+        var targetTypes = types.SelectValue().Where(x => !collisions.Contains(MakeClassHintName(x))).Select(MakeRegistryType).ToList();
         var closedTypes = closedGenerics.SelectMany(static x => x.SelectValue()).ToList();
 
         // Merge external targets
         var typeKeys = new HashSet<string>(types.SelectValue().Select(MakeTypeKey), StringComparer.Ordinal);
         foreach (var external in externals.SelectMany(static x => x.SelectValue()))
         {
-            if (!external.TargetHasGenerateAccessor && typeKeys.Add(MakeTypeKey(external.Type)))
+            if (!external.TargetHasGenerateAccessor && typeKeys.Add(MakeTypeKey(external.Type)) && !collisions.Contains(MakeClassHintName(external.Type)))
             {
                 targetTypes.Add(MakeRegistryType(external.Type));
             }
@@ -514,10 +724,10 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
         return new RegistryModel(
             new EquatableArray<RegistryTypeModel>(targetTypes),
-            new EquatableArray<ClosedGenericModel>(closedTypes.Where(x => closedKeys.Add(MakeClosedTypeKey(x)))));
+            new EquatableArray<ClosedGenericModel>(closedTypes.Where(x => !dropped.Contains(MakeOpenKey(x.Namespace, x.ClassName, x.TypeArguments.Count)) && closedKeys.Add(MakeClosedTypeKey(x)))));
 
         static RegistryTypeModel MakeRegistryType(TypeModel type) =>
-            new(type.Namespace, MakeTypePath(type), MakeFlatName(type), type.TypeArgumentCount, type.Constructors.Count > 0);
+            new(type.Namespace, MakeTypePath(type), MakeFlatName(type), type.TypeParameters.Count, type.Constructors.Count > 0);
     }
 
     // ------------------------------------------------------------
@@ -526,6 +736,9 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private static bool SupportsGenericUnsafeAccessor(SyntaxTree tree) =>
         (tree.Options is CSharpParseOptions options) && options.PreprocessorSymbolNames.Contains("NET9_0_OR_GREATER");
+
+    private static string GetNamespace(INamedTypeSymbol symbol) =>
+        String.IsNullOrEmpty(symbol.ContainingNamespace.Name) ? string.Empty : symbol.ContainingNamespace.ToDisplayString();
 
     private static bool IsPartialType(INamedTypeSymbol symbol) =>
         symbol.DeclaringSyntaxReferences.Any(static x => (x.GetSyntax() is TypeDeclarationSyntax syntax) && syntax.Modifiers.Any(SyntaxKind.PartialKeyword));
@@ -541,70 +754,83 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         SourceProductionContext context,
         ImmutableArray<Result<TypeModel>> types,
         ImmutableArray<EquatableArray<Result<ClosedGenericModel>>> closedGenerics,
-        ImmutableArray<EquatableArray<Result<ExternalModel>>> externals)
+        ImmutableArray<EquatableArray<Result<ExternalModel>>> externals,
+        ImmutableArray<SyntaxTree> trees)
     {
-        foreach (var info in types.SelectError())
-        {
-            context.ReportDiagnostic(info);
-        }
-        foreach (var info in closedGenerics.SelectMany(static x => x.SelectError()))
-        {
-            context.ReportDiagnostic(info);
-        }
-        foreach (var info in externals.SelectMany(static x => x.SelectError()))
-        {
-            context.ReportDiagnostic(info);
-        }
-
-        var reported = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var type in types.SelectValue())
-        {
-            ReportTypeDiagnostics(context, type, reported);
-        }
-        foreach (var external in externals.SelectMany(static x => x.SelectValue()))
-        {
-            ReportTypeDiagnostics(context, external.Type, reported);
-        }
+        var diagnostics = types.SelectError()
+            .Concat(closedGenerics.SelectMany(static x => x.SelectError()))
+            .Concat(externals.SelectMany(static x => x.SelectError()))
+            .Concat(FindHintNameCollisions(types, externals).Select(static x => new DiagnosticInfo(Diagnostics.HintNameCollision, (Location?)null, x.Name, x.Other)))
+            .Distinct();
+        context.ReportDiagnostics(diagnostics, trees);
     }
 
-    private static void ReportTypeDiagnostics(SourceProductionContext context, TypeModel type, HashSet<string> reported)
+    private static List<(string HintName, string Name, string Other)> FindHintNameCollisions(
+        ImmutableArray<Result<TypeModel>> types,
+        ImmutableArray<EquatableArray<Result<ExternalModel>>> externals)
     {
-        if (!reported.Add(MakeTypeKey(type)))
+        var files = new List<(string HintName, string Name)>();
+        foreach (var type in types.SelectValue())
         {
-            return;
+            files.Add((MakeClassHintName(type), MakeDisplayName(type.Namespace, MakeTypePath(type))));
         }
 
-        // No readable/writable members
-        if (!type.Members.Any(static x => x.CanRead || x.CanWrite))
+        foreach (var external in externals.SelectMany(static x => x.SelectValue()))
         {
-            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.NoAccessibleMembers, Location.None, type.ClassName));
+            if (!external.TargetHasGenerateAccessor)
+            {
+                files.Add((MakeClassHintName(external.Type), MakeDisplayName(external.Type.Namespace, MakeTypePath(external.Type))));
+            }
+
+            if (external.Provider is { } provider)
+            {
+                files.Add((MakeProviderFilename(provider), MakeDisplayName(provider.Namespace, MakeProviderPath(provider))));
+            }
         }
 
-        // UnsafeAccessor with generic parameters requires .NET 9 or later
-        if ((type.TypeArgumentCount > 0) && !type.SupportsGenericUnsafeAccessor && type.Members.Any(static x => x.RequiresUnsafe))
+        var collisions = new List<(string HintName, string Name, string Other)>();
+        var firsts = new Dictionary<string, (string HintName, string Name)>(StringComparer.OrdinalIgnoreCase);
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in files.OrderBy(static x => x.HintName, StringComparer.Ordinal))
         {
-            context.ReportDiagnostic(Diagnostic.Create(Diagnostics.GenericUnsafeAccessorNotSupported, Location.None, type.ClassName));
+            if (!firsts.TryGetValue(file.HintName, out var first))
+            {
+                firsts.Add(file.HintName, file);
+            }
+            else if ((first.HintName != file.HintName) && reported.Add(file.HintName))
+            {
+                collisions.Add((file.HintName, file.Name, first.Name));
+            }
         }
+
+        return collisions;
     }
 
     // ------------------------------------------------------------
     // Generator
     // ------------------------------------------------------------
 
-    private static void ExecuteClass(SourceProductionContext context, TypeModel type)
+    private static void ExecuteClass(SourceProductionContext context, TypeModel type, EquatableArray<string> collisions)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
+
+        var hintName = MakeClassHintName(type);
+        if (collisions.Contains(hintName))
+        {
+            return;
+        }
 
         var builder = new SourceBuilder();
         BuildClassSource(builder, type);
 
-        context.AddSource(HintNameBuilder.Build(type.Namespace, [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName, "Accessor"]), builder);
+        context.AddSource(hintName, builder);
     }
 
     private static void ExecuteExternal(
         SourceProductionContext context,
         ImmutableArray<EquatableArray<Result<ExternalModel>>> externals,
-        EquatableArray<string> typeKeys)
+        EquatableArray<string> typeKeys,
+        EquatableArray<string> collisions)
     {
         context.CancellationToken.ThrowIfCancellationRequested();
 
@@ -614,21 +840,26 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             if (!external.TargetHasGenerateAccessor && emitted.Add(MakeTypeKey(external.Type)))
             {
-                var builder = new SourceBuilder();
-                BuildClassSource(builder, external.Type);
+                var hintName = MakeClassHintName(external.Type);
+                if (!collisions.Contains(hintName))
+                {
+                    var builder = new SourceBuilder();
+                    BuildClassSource(builder, external.Type);
 
-                context.AddSource(HintNameBuilder.Build(external.Type.Namespace, external.Type.ClassName, "Accessor"), builder);
+                    context.AddSource(hintName, builder);
+                }
             }
 
-            if (external.Provider is { } provider)
+            if ((external.Provider is { } provider) && !collisions.Contains(MakeClassHintName(external.Type)))
             {
-                var providerKey = $"{provider.Namespace}/{provider.ClassName}::{provider.TargetTypeName}";
-                if (providerEmitted.Add(providerKey))
+                var providerKey = $"{provider.Namespace}/{MakeProviderPath(provider)}::{provider.TargetTypeName}";
+                var hintName = MakeProviderFilename(provider);
+                if (providerEmitted.Add(providerKey) && !collisions.Contains(hintName))
                 {
                     var builder = new SourceBuilder();
                     BuildProviderSource(builder, provider);
 
-                    context.AddSource(MakeProviderFilename(provider), builder);
+                    context.AddSource(hintName, builder);
                 }
             }
         }
@@ -651,6 +882,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.AutoGenerated();
         builder.EnableNullable();
+        builder.Disable("CS0612, CS0618");
         builder.NewLine();
 
         var className = MakeQualifiedName(type.Namespace, MakeTypePath(type));
@@ -701,6 +933,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("internal sealed class ")
             .Append(MakeSuffixedName(MakeFlatName(type), AccessorSuffix))
             .Append(" : global::BunnyTail.MemberAccessor.IAccessor")
+            .Append(type.Constraints)
             .NewLine();
         builder.BeginScope();
 
@@ -808,6 +1041,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append(" : global::BunnyTail.MemberAccessor.IAccessorFactory<")
             .Append(className)
             .Append('>')
+            .Append(type.Constraints)
             .NewLine();
         builder.BeginScope();
 
@@ -833,7 +1067,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 .Append("new global::BunnyTail.MemberAccessor.MemberDescriptor(\"")
                 .Append(member.Name)
                 .Append("\", typeof(")
-                .Append(member.Type)
+                .Append(member.TypeOfName)
                 .Append("), global::BunnyTail.MemberAccessor.MemberKind.")
                 .Append(member.IsField ? "Field" : "Property")
                 .Append(", ")
@@ -852,6 +1086,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .NewLine();
         builder.NewLine();
 
+        var propertyType = MakeTypeParameterName(type, "TProperty");
         var objectTargetExpr = type.IsValueType
             ? $"global::System.Runtime.CompilerServices.Unsafe.Unbox<{className}>(x)"
             : $"(({className})x)";
@@ -902,7 +1137,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.Indent()
             .Append("public global::BunnyTail.MemberAccessor.Getter<")
             .Append(className)
-            .Append(", TProperty>? CreateGetter<TProperty>(string name)")
+            .Append(", ").Append(propertyType).Append(">? CreateGetter<").Append(propertyType).Append(">(string name)")
             .NewLine();
         builder.BeginScope();
         builder.Indent().Append("return name switch").NewLine();
@@ -911,7 +1146,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             builder.Indent()
                 .Append("\"").Append(member.Name).Append("\" => (global::BunnyTail.MemberAccessor.Getter<")
-                .Append(className).Append(", TProperty>?)(object?)(global::BunnyTail.MemberAccessor.Getter<")
+                .Append(className).Append(", ").Append(propertyType).Append(">?)(object?)(global::BunnyTail.MemberAccessor.Getter<")
                 .Append(className).Append(", ").Append(member.Type)
                 .Append(">)(static (ref ").Append(className).Append(" x) => ")
                 .Append(BuildReadExpression(type, member, "x"))
@@ -928,7 +1163,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.Indent()
             .Append("public global::BunnyTail.MemberAccessor.Setter<")
             .Append(className)
-            .Append(", TProperty>? CreateSetter<TProperty>(string name)")
+            .Append(", ").Append(propertyType).Append(">? CreateSetter<").Append(propertyType).Append(">(string name)")
             .NewLine();
         builder.BeginScope();
         builder.Indent().Append("return name switch").NewLine();
@@ -937,7 +1172,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         {
             builder.Indent()
                 .Append("\"").Append(member.Name).Append("\" => (global::BunnyTail.MemberAccessor.Setter<")
-                .Append(className).Append(", TProperty>?)(object?)(global::BunnyTail.MemberAccessor.Setter<")
+                .Append(className).Append(", ").Append(propertyType).Append(">?)(object?)(global::BunnyTail.MemberAccessor.Setter<")
                 .Append(className).Append(", ").Append(member.Type)
                 .Append(">)(static (ref ").Append(className).Append(" x, ").Append(member.Type)
                 .Append(" v) => ")
@@ -957,7 +1192,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         if (member.GetterAccess != MemberAccess.Unsafe)
         {
-            return $"{targetExpr}.{member.Name}";
+            return $"{targetExpr}.{CSharpIdentifier.Escape(member.Name)}";
         }
 
         var bridge = MakeSuffixedName(MakeFlatName(type), UnsafeAccessSuffix);
@@ -971,7 +1206,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         if (member.SetterAccess != MemberAccess.Unsafe)
         {
-            return $"{targetExpr}.{member.Name} = {valueExpr}";
+            return $"{targetExpr}.{CSharpIdentifier.Escape(member.Name)} = {valueExpr}";
         }
 
         var bridge = MakeSuffixedName(MakeFlatName(type), UnsafeAccessSuffix);
@@ -989,6 +1224,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append(" : global::BunnyTail.MemberAccessor.IConstructor<")
             .Append(className)
             .Append('>')
+            .Append(type.Constraints)
             .NewLine();
         builder.BeginScope();
 
@@ -1020,6 +1256,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         // Create<TArg...>(TArg... arg...) - 1 to MaxConstructorArity args
         for (var arity = 1; arity <= MaxConstructorArity; arity++)
         {
+            var argTypes = MakeArgTypeParameterNames(type, arity);
             builder.Indent().Append("public ").Append(className).Append(" Create<");
             for (var i = 0; i < arity; i++)
             {
@@ -1027,7 +1264,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 {
                     builder.Append(", ");
                 }
-                builder.Append(ArgTypeParameterName(arity, i));
+                builder.Append(argTypes[i]);
             }
             builder.Append(">(");
             for (var i = 0; i < arity; i++)
@@ -1036,11 +1273,11 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 {
                     builder.Append(", ");
                 }
-                builder.Append(ArgTypeParameterName(arity, i)).Append(' ').Append(ArgName(arity, i));
+                builder.Append(argTypes[i]).Append(' ').Append(ArgName(arity, i));
             }
             builder.Append(')').NewLine();
             builder.BeginScope();
-            BuildCreateBody(builder, className, byArity, arity);
+            BuildCreateBody(builder, className, byArity, argTypes);
             builder.EndScope();
             builder.NewLine();
         }
@@ -1120,8 +1357,9 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.Append(");").NewLine();
     }
 
-    private static void BuildCreateBody(SourceBuilder builder, string className, Dictionary<int, ConstructorModel[]> byArity, int arity)
+    private static void BuildCreateBody(SourceBuilder builder, string className, Dictionary<int, ConstructorModel[]> byArity, string[] argTypes)
     {
+        var arity = argTypes.Length;
         if (!byArity.TryGetValue(arity, out var constructors))
         {
             builder.Indent()
@@ -1149,7 +1387,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 {
                     builder.Append(" && ");
                 }
-                builder.Append("typeof(").Append(ArgTypeParameterName(arity, i)).Append(") == typeof(").Append(ctor.Parameters[i].Type).Append(')');
+                builder.Append("typeof(").Append(argTypes[i]).Append(") == typeof(").Append(ctor.Parameters[i].TypeOfName).Append(')');
             }
             builder.Append(')').NewLine();
             builder.BeginScope();
@@ -1179,6 +1417,17 @@ public sealed class AccessorGenerator : IIncrementalGenerator
 
     private static string ArgTypeParameterName(int arity, int index) => arity == 1 ? "TArg" : $"TArg{index + 1}";
 
+    private static string[] MakeArgTypeParameterNames(TypeModel type, int arity)
+    {
+        var names = new string[arity];
+        for (var i = 0; i < arity; i++)
+        {
+            names[i] = MakeTypeParameterName(type, ArgTypeParameterName(arity, i));
+        }
+
+        return names;
+    }
+
     private static string ArgName(int arity, int index) => arity == 1 ? "arg" : $"arg{index + 1}";
 
     private static void BuildUnsafeAccessSource(SourceBuilder builder, TypeModel type)
@@ -1186,6 +1435,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         builder.Indent()
             .Append("internal static class ")
             .Append(MakeSuffixedName(MakeFlatName(type), UnsafeAccessSuffix))
+            .Append(type.Constraints)
             .NewLine();
         builder.BeginScope();
 
@@ -1297,7 +1547,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("static global::BunnyTail.MemberAccessor.IAccessor global::BunnyTail.MemberAccessor.IAccessorProvider<")
             .Append(className)
             .Append(">.Accessor => ")
-            .Append(MakeSuffixedName(MakeFlatName(type), AccessorSuffix))
+            .Append(MakeQualifiedName(type.Namespace, MakeSuffixedName(MakeFlatName(type), AccessorSuffix)))
             .Append(".Instance;")
             .NewLine();
         builder.NewLine();
@@ -1308,7 +1558,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             .Append("> global::BunnyTail.MemberAccessor.IAccessorProvider<")
             .Append(className)
             .Append(">.AccessorFactory => ")
-            .Append(MakeSuffixedName(MakeFlatName(type), AccessorFactorySuffix))
+            .Append(MakeQualifiedName(type.Namespace, MakeSuffixedName(MakeFlatName(type), AccessorFactorySuffix)))
             .Append(".Instance;")
             .NewLine();
 
@@ -1321,7 +1571,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
                 .Append("> global::BunnyTail.MemberAccessor.IConstructorProvider<")
                 .Append(className)
                 .Append(">.Constructor => ")
-                .Append(MakeSuffixedName(MakeFlatName(type), ConstructorAccessorSuffix))
+                .Append(MakeQualifiedName(type.Namespace, MakeSuffixedName(MakeFlatName(type), ConstructorAccessorSuffix)))
                 .Append(".Instance;")
                 .NewLine();
         }
@@ -1338,6 +1588,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     {
         builder.AutoGenerated();
         builder.EnableNullable();
+        builder.Disable("CS0612, CS0618");
         builder.NewLine();
 
         if (!String.IsNullOrEmpty(provider.Namespace))
@@ -1347,6 +1598,17 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
 
         var hasConstructor = !String.IsNullOrEmpty(provider.ConstructorName);
+
+        foreach (var containingType in provider.ContainingTypes)
+        {
+            builder.Indent()
+                .Append("partial ")
+                .Append(containingType.TypeKeyword)
+                .Append(' ')
+                .Append(containingType.ClassName)
+                .NewLine();
+            builder.BeginScope();
+        }
 
         builder.Indent()
             .Append("partial ")
@@ -1400,12 +1662,18 @@ public sealed class AccessorGenerator : IIncrementalGenerator
         }
 
         builder.EndScope();
+
+        for (var i = 0; i < provider.ContainingTypes.Count; i++)
+        {
+            builder.EndScope();
+        }
     }
 
     private static void BuildRegistrySource(SourceBuilder builder, EquatableArray<RegistryTypeModel> types, EquatableArray<ClosedGenericModel> closedTypes)
     {
         builder.AutoGenerated();
         builder.EnableNullable();
+        builder.Disable("CS0612, CS0618");
         builder.NewLine();
 
         // Class
@@ -1571,7 +1839,7 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     }
 
     private static string MakeQualifiedName(string ns, string name) =>
-        String.IsNullOrEmpty(ns) ? $"global::{name}" : $"global::{ns}.{name}";
+        String.IsNullOrEmpty(ns) ? $"global::{name}" : $"global::{CSharpIdentifier.EscapeQualifiedName(ns)}.{name}";
 
     private static string MakeTypePath(TypeModel type) =>
         String.Join(".", [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName]);
@@ -1579,10 +1847,32 @@ public sealed class AccessorGenerator : IIncrementalGenerator
     private static string MakeFlatName(TypeModel type) =>
         String.Join("__", [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName]);
 
+    private static string MakeDisplayName(string ns, string path) =>
+        String.IsNullOrEmpty(ns) ? path : $"{ns}.{path}";
+
+    private static string MakeProviderPath(ProviderModel provider) =>
+        String.Join(".", [.. provider.ContainingTypes.Select(static x => x.ClassName), provider.ClassName]);
+
+    private static string MakeClassHintName(TypeModel type) =>
+        HintNameBuilder.Build(type.Namespace, [.. type.ContainingTypes.Select(static x => x.ClassName), type.ClassName, "Accessor"]);
+
+    private static string MakeOpenKey(string ns, string className, int arity) =>
+        $"{ns}/{OpenNamePart(className)}`{arity}";
+
     private static string OpenNamePart(string className)
     {
         var index = className.IndexOf('<');
         return index < 0 ? className : className.Substring(0, index);
+    }
+
+    private static string MakeTypeParameterName(TypeModel type, string name)
+    {
+        while (type.TypeParameters.Contains(name))
+        {
+            name = "_" + name;
+        }
+
+        return name;
     }
 
     private static string MakeTypeArgumentsPart(EquatableArray<string> typeArguments) =>
@@ -1611,6 +1901,6 @@ public sealed class AccessorGenerator : IIncrementalGenerator
             target.Append(Char.IsLetterOrDigit(c) ? c : '_');
         }
 
-        return HintNameBuilder.Build(provider.Namespace, OpenNamePart(provider.ClassName), "Provider", target.ToString());
+        return HintNameBuilder.Build(provider.Namespace, [.. provider.ContainingTypes.Select(static x => OpenNamePart(x.ClassName)), OpenNamePart(provider.ClassName), "Provider", target.ToString()]);
     }
 }

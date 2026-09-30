@@ -9,6 +9,7 @@ internal enum MemberAccess
 
 internal sealed record MemberModel(
     string Type,
+    string TypeOfName,
     string Name,
     bool IsField,
     MemberAccess GetterAccess,
