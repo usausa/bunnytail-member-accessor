@@ -305,7 +305,7 @@ public partial class DerivedData : BaseData
 }
 
 // Property collection filtering test data (public instance properties only)
-// This type is deliberately not partial: accessor generation must still work (BTMA0006 info)
+// This type is deliberately not partial: accessor generation must still work (BTMA0202 info)
 [GenerateAccessor]
 public class FilterData
 {
